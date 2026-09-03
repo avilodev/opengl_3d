@@ -116,9 +116,35 @@ typedef struct {
     const char* rounds_part;
 } FirearmSpec;
 
-/* Defined in full once there is a melee weapon to define it for. Forward
-   declared here so WeaponSpec can point at one before then. */
-struct MeleeSpec;
+/* Everything that is true of a melee weapon and of nothing else.
+
+   The blade segment is the whole of what a swing means geometrically: two
+   points in the weapon's own frame, swept through the transform between one
+   frame and the next. Stated here rather than derived from the mesh bounds
+   because a bounding box includes the grip and the guard, and a sword that
+   cut with its handle would be a surprise nobody debugged quickly. */
+typedef struct MeleeSpec {
+    float blade_base[3];
+    float blade_tip[3];
+
+    /* The scabbard: its own mesh, worn on the pelvis rather than held. A
+       katana is worn thrust through the belt on the left hip, edge up, tsuka
+       forward - so this is an offset and a cant off that bone, stated once and
+       read by both views. */
+    const char* scabbard_path;
+    float scabbard_offset[3];
+    float scabbard_pitch, scabbard_yaw, scabbard_roll;
+
+    /* Where the sword sits inside the scabbard, along the blade's own axis
+       from the koiguchi. A curved blade leaves along its axis and cannot come
+       out sideways, which is what makes this one number rather than a pose. */
+    float sheathed_depth;
+
+    /* Pulls the clip-driven arms into frame. Those clips were staged for a
+       camera behind the body; in first person the same motion needs bringing
+       toward the eye. Camera space, same axes as view_right/view_down. */
+    float view_clip_offset[3];
+} MeleeSpec;
 
 typedef enum {
     /* Two hands at two places: one closed on the grip, the other out on a
@@ -140,7 +166,7 @@ typedef struct {
        weapon_spec_melee rather than by reading the pointer. */
     WeaponClass kind;
     const FirearmSpec* firearm;
-    const struct MeleeSpec* melee;
+    const MeleeSpec* melee;
 
     /* Flat at every distance. No weapon in this game has falloff. */
     float damage;
@@ -214,6 +240,9 @@ extern const WeaponSpec WEAPON_SPEC_AUTO_PISTOL;
 /* The issued weapon. Slower and heavier, and unmagnified by choice. */
 extern const WeaponSpec WEAPON_SPEC_ASSAULT_RIFLE;
 
+/* The melee alternative: a katana, worn on the hip and drawn to use. */
+extern const WeaponSpec WEAPON_SPEC_KATANA;
+
 /* The gun half, or NULL on a weapon that is not a gun.
 
    Callers that already know perfectly well they are holding a firearm still
@@ -221,6 +250,10 @@ extern const WeaponSpec WEAPON_SPEC_ASSAULT_RIFLE;
    which would crash on a melee weapon is the one place that gets the check.
    Every reader of a gun-only number starts with this and a NULL test. */
 const FirearmSpec* weapon_spec_firearm(const WeaponSpec* spec);
+
+/* The melee half, or NULL on a weapon that is not one. Same bargain as
+   weapon_spec_firearm, read from the other side. */
+const MeleeSpec* weapon_spec_melee(const WeaponSpec* spec);
 
 /* The mount height: the gun's rail above its bore plus the sight's reticle
    above its rail seat. Aiming drops the gun by exactly this, which is what

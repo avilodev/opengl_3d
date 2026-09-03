@@ -12,6 +12,10 @@ const FirearmSpec* weapon_spec_firearm(const WeaponSpec* spec) {
     return spec && spec->kind == WEAPON_CLASS_FIREARM ? spec->firearm : NULL;
 }
 
+const MeleeSpec* weapon_spec_melee(const WeaponSpec* spec) {
+    return spec && spec->kind == WEAPON_CLASS_MELEE ? spec->melee : NULL;
+}
+
 /* The four below are all a sight's, and a weapon with no gun half has no
    sight. They answer zero rather than dereferencing, because every one of
    them is read on a frame the player might be holding anything - and a sight

@@ -45,6 +45,15 @@ SOURCE = 'models/Swords/Katana/Japanese Katana.fbx'
 TEXTURE_DIR = 'models/Swords/Katana/Japanese Katana Texture'
 OUTPUT = 'models/Swords/Katana/katana.glb'
 
+# The scabbard leaves in a file of its own. It is a separate object in every
+# sense that matters at draw time -- worn on the hip while the sword is in the
+# hand, and left behind on the hip while the sword is swung -- and two meshes
+# with two origins is the only shape in which those two things can be posed
+# independently. Splitting it here rather than hiding it at draw time also
+# means the sword's own origin and bounds stop counting a part that is not
+# attached to it.
+SAYA_OUTPUT = 'models/Swords/Katana/katana_saya.glb'
+
 # Butt of the grip to the tip of the blade, in metres. A katana runs about a
 # metre over all -- a 70cm nagasa on a 26cm tsuka -- and every other dimension
 # of the model is in proportion to that, so one measured length sets the scale
@@ -57,8 +66,8 @@ OVERALL_LENGTH = 1.02
 GRIP = 'BladesPart5'
 
 # The scabbard: modelled as part of the same mesh and parked alongside the
-# sword rather than around it. Not hidden here -- what to draw is the caller's
-# call, and it has static_model_draw_except to make it with.
+# sword rather than around it, which is why it is split into SAYA_OUTPUT with
+# an origin of its own rather than drawn where the artist left it.
 SCABBARD = 'KatanaCover'
 
 # The artist's naming, which is regular enough to derive rather than tabulate.
@@ -117,23 +126,12 @@ def texture_png(material):
     return buffer.getvalue()
 
 
-def main():
-    parts = load_mesh(SOURCE)
-    names = [name for name, _ in parts]
-    if GRIP not in names:
-        raise ValueError('%s has no %s material; the grip is what the origin '
-                         'is measured from' % (SOURCE, GRIP))
+def write_parts(parts, origin, scale, output):
+    """Bakes some of the materials into one glb about a stated origin.
 
-    # The scale is set by the sword, not by the bounding box: the scabbard
-    # reaches a centimetre past the tip and measuring across both would make
-    # every part of the sword that much too small.
-    sword = [g for name, g in parts if name != SCABBARD]
-    low, high = bounds(sword)
-    scale = OVERALL_LENGTH / (high[2] - low[2])
-
-    grip = [g for name, g in parts if name == GRIP]
-    grip_low, grip_high = bounds(grip)
-    origin = [(grip_low[c] + grip_high[c]) * 0.5 for c in range(3)]
+    Two files come out of this asset and they differ only in which materials
+    go in and where the origin sits, so the baking is written once and called
+    twice rather than duplicated with one line changed."""
 
     def place(x, y, z):
         """FBX (right, up, tipward) to viewmodel (right, up, back), in metres.
@@ -165,30 +163,76 @@ def main():
               % (name, len(positions) // 3, len(group['indices']) // 3,
                  '%d KB map' % (len(png) / 1024.0) if png else 'no map'))
 
-    size = glb.write(OUTPUT)
+    size = glb.write(output)
+    print('%s: %d triangles across %d materials, %.1f KB\n'
+          % (output, triangles, len(parts), size / 1024.0))
+
+
+def main():
+    parts = load_mesh(SOURCE)
+    names = [name for name, _ in parts]
+    if GRIP not in names:
+        raise ValueError('%s has no %s material; the grip is what the origin '
+                         'is measured from' % (SOURCE, GRIP))
+    if SCABBARD not in names:
+        raise ValueError('%s has no %s material; the scabbard is a file of its '
+                         'own and cannot be split out of nothing'
+                         % (SOURCE, SCABBARD))
+
+    sword_parts = [(n, g) for n, g in parts if n != SCABBARD]
+    saya_parts = [(n, g) for n, g in parts if n == SCABBARD]
+
+    # The scale is set by the sword, not by the bounding box: the scabbard
+    # reaches a centimetre past the tip and measuring across both would make
+    # every part of the sword that much too small. Both files take the same
+    # scale, because a scabbard measured in its own units would not fit the
+    # sword that goes into it.
+    low, high = bounds([g for _, g in sword_parts])
+    scale = OVERALL_LENGTH / (high[2] - low[2])
+
+    grip_low, grip_high = bounds([g for n, g in parts if n == GRIP])
+    origin = [(grip_low[c] + grip_high[c]) * 0.5 for c in range(3)]
+
+    # The mouth of the scabbard, which is where the blade enters and leaves.
+    # The origin goes here for the reason the optic's goes on its reticle: it
+    # is the one point the draw, the sheathed sword and this mesh all have to
+    # agree on, and an origin anywhere else means each of them derives it
+    # separately. The mouth is the tsuka end, which is -Z in FBX before the
+    # half turn, so the low corner.
+    cover_low, cover_high = bounds([g for _, g in saya_parts])
+    koiguchi = [(cover_low[0] + cover_high[0]) * 0.5,
+                (cover_low[1] + cover_high[1]) * 0.5,
+                cover_low[2]]
+
+    write_parts(sword_parts, origin, scale, OUTPUT)
+    write_parts(saya_parts, koiguchi, scale, SAYA_OUTPUT)
 
     # The landmarks a viewmodel spec would be set from. Printed rather than
     # written anywhere, because a spec is tuning and wants a person to approve
     # it.
-    all_low, all_high = bounds([g for _, g in parts])
-    print('\n%s: %d triangles across %d materials, %.1f KB'
-          % (OUTPUT, triangles, len(parts), size / 1024.0))
+    all_low, all_high = bounds([g for _, g in sword_parts])
     print('scale %.6f m per unit, %.4f m long, %.4f m tall, %.4f m wide'
           % (scale, OVERALL_LENGTH, (all_high[1] - all_low[1]) * scale,
              (all_high[0] - all_low[0]) * scale))
     print('landmarks in viewmodel space (+x right, +y up, -z forward),')
-    print('measured from the middle of the grip, which is the origin:')
-    print('  tip of the blade           z %+.4f' % (-(high[2] - origin[2]) * scale))
-    print('  butt of the grip           z %+.4f' % (-(low[2] - origin[2]) * scale))
-    print('  grip                       %.4f m long' %
-          ((grip_high[2] - grip_low[2]) * scale))
-    print('  guard, forward of the grip z %+.4f' %
-          (-(grip_high[2] - origin[2]) * scale))
-    print('  scabbard sits              y %+.4f to %+.4f  (parked below the '
-          'sword, not around it)' % ((all_low[1] - origin[1]) * scale,
-                                     (bounds([g for n, g in parts
-                                              if n == SCABBARD])[1][1]
-                                      - origin[1]) * scale))
+    print('measured from the middle of the grip, which is the sword origin:')
+    print('  tip of the blade           z %+.4f'
+          % (-(high[2] - origin[2]) * scale))
+    print('  butt of the grip           z %+.4f'
+          % (-(low[2] - origin[2]) * scale))
+    print('  grip                       %.4f m long'
+          % ((grip_high[2] - grip_low[2]) * scale))
+    print('  guard, forward of the grip z %+.4f'
+          % (-(grip_high[2] - origin[2]) * scale))
+    # Where the mouth of the scabbard falls if the sword is left sheathed in
+    # the pose the artist modelled. Task 9 hangs the saya off the hip instead,
+    # but this is the depth the blade has to travel to clear it.
+    print('  koiguchi, in sword space   %+.4f %+.4f %+.4f'
+          % (-(koiguchi[0] - origin[0]) * scale,
+             (koiguchi[1] - origin[1]) * scale,
+             -(koiguchi[2] - origin[2]) * scale))
+    print('  saya                       %.4f m deep'
+          % ((cover_high[2] - cover_low[2]) * scale))
 
 
 if __name__ == '__main__':

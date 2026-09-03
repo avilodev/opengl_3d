@@ -179,3 +179,50 @@ const WeaponSpec WEAPON_SPEC_ASSAULT_RIFLE = {
        pokes up through the glass. Off, by name, from the gun's own mesh. */
     .hidden_parts = {"IronSightMat"},
 };
+
+/* The katana. Its landmarks come from tools/katana_to_glb.py, which prints
+   them every time it runs: the origin is the middle of the tsuka, the guard
+   sits at z -0.1131, the tip at z -0.9069, and the saya is 0.7907m deep. */
+static const MeleeSpec KATANA_MELEE = {
+    /* The cutting edge only: from just forward of the guard to the tip. The
+       last few centimetres before the guard are the habaki and the collar,
+       which nothing is cut with. */
+    .blade_base = { 0.0f, 0.0f, -0.14f },
+    .blade_tip  = { 0.0f, 0.0f, -0.907f },
+
+    .scabbard_path = "models/Swords/Katana/katana_saya.glb",
+    /* Left hip, edge up, angled back and down - how one is actually worn.
+       Tuned against the rig in Task 9; these are the starting numbers. */
+    .scabbard_offset = { -0.16f, -0.02f, 0.06f },
+    .scabbard_pitch = -18.0f, .scabbard_yaw = 12.0f, .scabbard_roll = 180.0f,
+
+    /* The blade is 0.794m from the guard to the tip and the saya is 0.7907m
+       deep, so a sheathed sword is in as far as it goes. */
+    .sheathed_depth = 0.79f,
+
+    .view_clip_offset = { 0.0f, 0.0f, 0.0f },   /* tuned in Task 7 */
+};
+
+const WeaponSpec WEAPON_SPEC_KATANA = {
+    .name = "Katana",
+    .kind = WEAPON_CLASS_MELEE,
+    .melee = &KATANA_MELEE,
+
+    /* One clean cut is most of a person. The range is the reach of the arm
+       and the blade together, and is what the swing sweep is bounded by. */
+    .damage = 55.0f,
+    .range = 2.0f,
+
+    .mesh_path = "models/Swords/Katana/katana.glb",
+    /* Copies of the rifle's, so the sword is on screen and roughly where a
+       held thing goes. Tuned in Task 8, once it is actually on the hand
+       socket and there is something to tune against. */
+    .view_right = 0.148f,
+    .view_down = 0.125f,
+    .view_forward = 0.38f,
+    .view_fov = 43.0f,
+
+    .hold = WEAPON_HOLD_TWO_POINT,
+    .grip_right = {0.0f, -0.090f, 0.030f},
+    .grip_left = {0.0f, -0.060f, -0.330f},
+};

@@ -83,11 +83,38 @@ static void check_mesh(const WeaponSpec* spec) {
        leaks three models; that is a fair price for staying headless. */
 }
 
+/* The blade segment, which is the whole of what a swing means geometrically.
+   A tip behind its base, or level with it, is a sword that traces a segment of
+   no length forward of the hand: every swing misses, and the miss looks like a
+   hit detection bug rather than a spec typo. */
+static void check_blade(const WeaponSpec* spec) {
+    const MeleeSpec* melee = weapon_spec_melee(spec);
+    if (!melee) return;
+    printf("%s blade\n", spec->name);
+    float dz = melee->blade_tip[2] - melee->blade_base[2];
+    expect(dz < -0.2f, "the blade runs forward of its base");
+    expect(melee->scabbard_path != NULL, "the scabbard names a mesh");
+
+    /* The scabbard is a second file, split out of the same FBX, and it is the
+       one the sword is not drawn with - so a rename or a stale path there goes
+       unnoticed for exactly as long as nobody sheathes. */
+    if (!melee->scabbard_path) return;
+    StaticModel saya;
+    char error[256];
+    if (static_model_load_glb(&saya, melee->scabbard_path, error, sizeof error))
+        expect(1, melee->scabbard_path);
+    else
+        expect(0, error);
+}
+
 int main(void) {
     check_class_halves(&WEAPON_SPEC_AUTO_PISTOL);
     check_class_halves(&WEAPON_SPEC_ASSAULT_RIFLE);
+    check_class_halves(&WEAPON_SPEC_KATANA);
     check_mesh(&WEAPON_SPEC_AUTO_PISTOL);
     check_mesh(&WEAPON_SPEC_ASSAULT_RIFLE);
+    check_mesh(&WEAPON_SPEC_KATANA);
+    check_blade(&WEAPON_SPEC_KATANA);
     printf("\n%d failures\n", failures);
     return failures != 0;
 }
