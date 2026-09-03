@@ -28,6 +28,13 @@
    gameplay height, which is why these are hand-sized numbers rather than
    player-sized ones. */
 #define CHARACTER_WEAPON_BONE "hand_r"
+
+/* The pelvis and not spine_01. A scabbard is thrust through a belt, so it
+   rides the hips: it must not swing with the chest when the body twists to
+   look somewhere, which is exactly what hanging it off the spine would do, and
+   the twist this rig applies to aim is large enough that the sword would
+   visibly lead the hips into every turn. */
+#define CHARACTER_SCABBARD_BONE "pelvis"
 #define CHARACTER_GRIP_INTO_PALM -0.020f
 #define CHARACTER_GRIP_ALONG_HAND 0.060f
 
@@ -188,6 +195,34 @@ int character_held_weapon_transform(const SkinnedModel* model, const Pose* pose,
     grip = mat4_multiply(grip,
         mat4_translation(-CHARACTER_GRIP_X, -CHARACTER_GRIP_Y, -CHARACTER_GRIP_Z));
     *out = grip;
+    return 1;
+}
+
+int character_scabbard_transform(const SkinnedModel* model, const Pose* pose,
+                                 const MeleeSpec* melee, Mat4* out) {
+    if (!model || !pose || !melee || !out) return 0;
+    Mat4 hips;
+    if (!skinned_model_bone_matrix(model, pose, CHARACTER_SCABBARD_BONE, &hips))
+        return 0;
+
+    /* Off the hip, then the cant, in that order: the offset says where on the
+       belt it is threaded and the angles say how it hangs there, and swapping
+       them would swing the scabbard around the pelvis as it was tilted rather
+       than tilting it where it sits.
+
+       Yaw, then pitch, then roll - the same order the viewmodel names its
+       three, so a number that means "canted back" means the same thing in both
+       halves of the game. */
+    Mat4 worn = mat4_multiply(hips,
+        mat4_translation(melee->scabbard_offset[0], melee->scabbard_offset[1],
+                         melee->scabbard_offset[2]));
+    worn = mat4_multiply(worn,
+        mat4_rotation_degrees(melee->scabbard_yaw, 0, 1, 0));
+    worn = mat4_multiply(worn,
+        mat4_rotation_degrees(melee->scabbard_pitch, 1, 0, 0));
+    worn = mat4_multiply(worn,
+        mat4_rotation_degrees(melee->scabbard_roll, 0, 0, 1));
+    *out = worn;
     return 1;
 }
 

@@ -49,6 +49,17 @@ BODY_PROBE_SRCS := tools/body_probe.c src/render/character_animation.c \
               src/render/skinned_model_glb.c src/render/skinned_pose.c \
               src/render/glb.c src/render/stb_image.c src/core/json.c
 
+# Where the scabbard is worn and whether the sword in it agrees. Three facts
+# that have to line up and cannot be seen lining up by playing - see
+# tools/sheath_probe.c.
+SHEATH_PROBE := bin/sheath_probe
+SHEATH_PROBE_SRCS := tools/sheath_probe.c src/render/character_transform.c \
+              src/render/character_animation.c \
+              src/gameplay/weapon_specs.c src/gameplay/weapon_spec.c \
+              src/gameplay/viewmodel_pose.c src/gameplay/sights.c \
+              src/render/skinned_model_glb.c src/render/skinned_pose.c \
+              src/render/glb.c src/render/stb_image.c src/core/json.c
+
 # Health, death and respawn, checked without a window for the same reason the
 # other two are - and with more need, because nothing in the world can shoot the
 # player yet, so this file and one debug key are the only things that run the
@@ -73,7 +84,7 @@ SPEC_PROBE_SRCS := tools/weapon_spec_probe.c src/gameplay/weapon_spec.c \
               src/render/static_model_glb.c src/render/glb.c \
               src/render/stb_image.c src/core/json.c
 
-.PHONY: all build clean run probe bodyprobe deathprobe specprobe
+.PHONY: sheathprobe all build clean run probe bodyprobe deathprobe specprobe
 
 all: $(TARGET)
 
@@ -106,6 +117,12 @@ probe: $(PROBE_SRCS)
 	./$(PROBE)
 
 # Run from the project root, for the same relative model path the game uses.
+sheathprobe: $(SHEATH_PROBE_SRCS)
+	@mkdir -p bin
+	$(PROBE_CC) -Wall -Wextra -std=c11 -O1 $(CPPFLAGS) $(SHEATH_PROBE_SRCS) \
+	    -o $(SHEATH_PROBE) -lm
+	./$(SHEATH_PROBE)
+
 bodyprobe: $(BODY_PROBE_SRCS)
 	@mkdir -p bin
 	$(PROBE_CC) -Wall -Wextra -std=c11 -O1 $(CPPFLAGS) $(BODY_PROBE_SRCS) \
@@ -128,6 +145,6 @@ deathprobe: $(DEATH_PROBE_SRCS)
 
 clean:
 	rm -rf obj $(TARGET) $(PROBE) $(BODY_PROBE) $(DEATH_PROBE) \
-	    $(SPEC_PROBE) $(BUILD_DIR)
+	    $(SPEC_PROBE) $(SHEATH_PROBE) $(BUILD_DIR)
 
 -include $(DEPS)

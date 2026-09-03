@@ -44,6 +44,16 @@ Mat4 character_body_transform(const CharacterInstance* instance,
    the step into the palm, the quarter turn that stands the gun up in the fist,
    and the step back by the grip point. Zero if the rig has no hand to hold it
    with. Compose with character_body_transform for a world matrix. */
+/* The scabbard on the body's hip, in the rig's own space: the pelvis bone,
+   the step onto the belt, and the cant it hangs at - all three stated on the
+   MeleeSpec, so both views read one set of numbers. Zero if the rig has no
+   pelvis. Compose with character_body_transform for a world matrix.
+
+   Its origin is the koiguchi, the mouth, which is where the blade enters and
+   leaves. Everything about a draw is measured from that one point. */
+int character_scabbard_transform(const SkinnedModel* model, const Pose* pose,
+                                 const MeleeSpec* melee, Mat4* out);
+
 int character_held_weapon_transform(const SkinnedModel* model, const Pose* pose,
                                     Mat4* out);
 

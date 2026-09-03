@@ -178,6 +178,7 @@ int main(void) {
        assignment, off the weapon rather than off a second name for it, so the
        two views cannot end up carrying different guns. */
     body.weapon = weapon.spec;
+    body.sheathed = weapon.sheathed;
     /* What its rounds can land on. Published once: the set of bodies in the
        world outlives every shot, and a weapon that was handed them per step
        would be a weapon whose signature grew every time the world did. */
@@ -326,6 +327,9 @@ int main(void) {
             int melee_base_valid = weapon_renderer_melee_base(
                 &characters, player_rig, &weapon, &melee_base);
             weapon_set_melee_base(&weapon, &melee_base, melee_base_valid);
+            /* One bit, read off the weapon that owns it: a sword sheathed in
+               third person and drawn in first would be two swords. */
+            body.sheathed = weapon.sheathed;
 
             while (simulation_accumulator >= SIMULATION_STEP) {
                 PlayerCommand step_player = player_command;

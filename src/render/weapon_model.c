@@ -113,3 +113,11 @@ int weapon_model_sight_glass(const SightSpec* sight) {
     if (!model) return 0;
     return static_model_draw_translucent(model);
 }
+
+int weapon_model_draw_scabbard(const MeleeSpec* melee) {
+    if (!melee) return 0;
+    const StaticModel* model = mesh(melee->scabbard_path);
+    if (!model) return 0;
+    static_model_draw(model);
+    return 1;
+}

@@ -46,6 +46,13 @@ int weapon_model_draw_only(const WeaponSpec* spec, const char* const* parts);
    arrives here without this function learning anything about it. */
 int weapon_model_draw_sight(const SightSpec* sight);
 
+/* The scabbard, about its own origin - the koiguchi, the mouth of it. Its own
+   entry point rather than a second WeaponSpec because a scabbard is not a
+   weapon: it has no damage, no reach and nothing to hold it by, and giving it
+   a spec so that one function could draw it would put a thing that cannot be
+   used in the table of things that can. */
+int weapon_model_draw_scabbard(const MeleeSpec* melee);
+
 /* Just the optic's glass, geometry only, at the caller's transform. This is the
    aperture a holographic reticle is seen through: masked to it, the reticle can
    only appear where the window actually is, so it emerges from behind the hood

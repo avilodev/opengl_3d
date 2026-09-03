@@ -866,7 +866,30 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
     GLfloat gun_matrix[16];
     glGetFloatv(GL_MODELVIEW_MATRIX, gun_matrix);
 
-    draw_receiver(weapon);
+    /* The scabbard, in camera space. There is no body in first person to hang
+       it off, so it goes on the eye instead, dropped to where a hip is - the
+       same offsets the pelvis socket uses, measured from a different origin.
+       Mostly out of frame, and drawn anyway because the draw and the sheathe
+       are motions between the hand and this point, and a motion toward
+       something that is not being drawn is a hand reaching into nothing.
+
+       Before the weapon so the blade is over it rather than through it. */
+    {
+        const MeleeSpec* melee = weapon_spec_melee(weapon->spec);
+        if (melee && melee->scabbard_path) {
+            glPushMatrix();
+            glTranslatef(melee->scabbard_offset[0],
+                         melee->scabbard_offset[1] - VIEWMODEL_HIP_BELOW_EYE,
+                         melee->scabbard_offset[2]);
+            glRotatef(melee->scabbard_yaw, 0, 1, 0);
+            glRotatef(melee->scabbard_pitch, 1, 0, 0);
+            glRotatef(melee->scabbard_roll, 0, 0, 1);
+            weapon_model_draw_scabbard(melee);
+            glPopMatrix();
+        }
+    }
+
+    if (!weapon->sheathed) draw_receiver(weapon);
     /* After the gun, so the hood is in the depth buffer to occlude with, and
        the glass is available to mask to. */
     const FirearmSpec* firearm = weapon_spec_firearm(weapon->spec);

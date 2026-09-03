@@ -43,6 +43,11 @@ typedef struct {
        Not owned: specs are static and outlive every body that points at one. */
     const WeaponSpec* weapon;
 
+    /* Whether a melee weapon is in its scabbard rather than in the hand. One
+       bit, shared by both views off the Weapon that owns it, because a sword
+       that is sheathed in third person and drawn in first is two swords. */
+    int sheathed;
+
     CharacterAnimation animation;
     Pose pose;
     SkinnedInstance skin;

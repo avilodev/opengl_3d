@@ -105,6 +105,45 @@ static int hang_grip_pose_space(const SkinnedModel* model,
     return 1;
 }
 
+/* The scabbard on the hip, and the sword in it when it is not in the hand.
+
+   Drawn from the same transform character_scabbard_transform hands the probe,
+   so what a screenshot shows and what the check asserts are one thing. The
+   sheathed sword walks back along its own blade axis from the koiguchi - a
+   katana is curved and can only enter and leave along that axis, which is
+   what makes the depth one number rather than a pose. */
+static void draw_scabbard(const SkinnedModel* model, const Pose* pose,
+                          const WeaponSpec* spec, int sheathed) {
+    const MeleeSpec* melee = weapon_spec_melee(spec);
+    if (!melee || !melee->scabbard_path) return;
+
+    Mat4 saya;
+    if (!character_scabbard_transform(model, pose, melee, &saya)) return;
+
+    glPushMatrix();
+    glMultMatrixf(saya.m);
+    weapon_model_draw_scabbard(melee);
+
+    if (sheathed) {
+        float d[3];
+        float length = 0.0f;
+        for (int c = 0; c < 3; ++c) {
+            d[c] = melee->blade_tip[c] - melee->blade_base[c];
+            length += d[c] * d[c];
+        }
+        length = sqrtf(length);
+        if (length > 1e-6f) {
+            glPushMatrix();
+            glTranslatef(-d[0] / length * melee->sheathed_depth,
+                         -d[1] / length * melee->sheathed_depth,
+                         -d[2] / length * melee->sheathed_depth);
+            weapon_model_draw(spec, spec->hidden_parts);
+            glPopMatrix();
+        }
+    }
+    glPopMatrix();
+}
+
 /* Two draws in the rig's own space. The scale that stands it at gameplay
    height and the lift onto its own feet are in the matrix the caller has
    already applied, so there is no transform left to do here - which is what
@@ -112,7 +151,11 @@ static int hang_grip_pose_space(const SkinnedModel* model,
 static void draw_model_body(const SkinnedModel* model,
                             const CharacterInstance* instance) {
     skinned_model_draw(model, &instance->skin);
-    draw_held_weapon(model, &instance->pose, instance->weapon);
+    /* The scabbard first: it is worn rather than held, so it is behind the
+       hand in every pose where the two overlap. */
+    draw_scabbard(model, &instance->pose, instance->weapon, instance->sheathed);
+    if (!instance->sheathed)
+        draw_held_weapon(model, &instance->pose, instance->weapon);
 }
 
 /* The original rig, still the fallback. Its one animation is a stride, which
@@ -162,6 +205,7 @@ void character_instance_init(CharacterInstance* instance, int rig) {
     /* Empty hands until a caller says otherwise. A body that draws nothing is
        a better default than one that draws somebody else's rifle. */
     instance->weapon = NULL;
+    instance->sheathed = 0;
 }
 
 void character_renderer_update(CharacterLibrary* library, CharacterInstance* instance,

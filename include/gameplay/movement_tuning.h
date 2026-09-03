@@ -93,6 +93,12 @@
 #define VIEW_LEAN_OFFSET 0.32f
 #define VIEWMODEL_LEAN_ROLL 9.0f
 
+/* How far below the eye a hip is, for the things worn on one. First person has
+   no body to hang a scabbard off, so the belt is measured from the camera
+   instead - which is the same measurement, taken from the other end. Roughly
+   the eye-to-hip of the rig at gameplay height. */
+#define VIEWMODEL_HIP_BELOW_EYE 0.75f
+
 /* --- the leaning body ---
    A lean is a bend, not a tilt: the spine takes it, the feet stay planted, and
    the gun goes wherever the hands that hold it go. So the roll below is spread
