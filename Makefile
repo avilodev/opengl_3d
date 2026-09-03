@@ -29,9 +29,7 @@ PROBE := bin/viewmodel_probe
 PROBE_CC := gcc
 PROBE_SRCS := tools/viewmodel_probe.c src/render/arm_placement.c \
               src/gameplay/viewmodel_pose.c src/gameplay/weapon_spec.c \
-              src/gameplay/weapon_specs.c src/gameplay/weapon_spec.c \
-              src/gameplay/viewmodel_pose.c \
-              src/gameplay/sights.c \
+              src/gameplay/weapon_specs.c src/gameplay/sights.c \
               src/render/skinned_model_glb.c src/render/skinned_pose.c \
               src/render/glb.c src/render/stb_image.c src/core/json.c \
               src/gameplay/weapon.c src/gameplay/traversal.c src/gameplay/arena.c \
