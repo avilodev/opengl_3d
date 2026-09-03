@@ -23,6 +23,7 @@
 #include "gameplay/movement_tuning.h"
 #include "gameplay/viewmodel_pose.h"
 #include "render/arm_placement.h"
+#include "render/viewmodel_clip_arms.h"
 #include "render/skinned_model.h"
 #include "utils/mat4.h"
 #include "utils/math_utils.h"
@@ -1838,6 +1839,46 @@ static void check_firing_wrist(const WeaponSpec* spec, const SkinnedModel* model
                "the palm faces across the gun, not up, down or outward");
 }
 
+/* The clip-driven arms, sampled across every attack's live window.
+
+   Not precision tuning - the numbers are a box, not a target. What this
+   catches is the conversion going wrong wholesale: a dropped facing rotation
+   puts the hands behind the eye, a missing rig scale puts them two metres
+   away, and both draw perfectly happily off screen where nobody sees the arms
+   are gone rather than merely misplaced. */
+static void check_clip_arms(const WeaponSpec* spec, const SkinnedModel* model) {
+    const MeleeSpec* melee = weapon_spec_melee(spec);
+    if (!melee) return;
+    printf("\n%s clip arms, hand_r in camera space\n", spec->name);
+    for (int a = 0; a < melee->attack_count; ++a) {
+        const MeleeAttack* attack = &melee->attacks[a];
+        int clip = skinned_model_find_clip(model, attack->clip);
+        if (clip < 0) { expect(0, attack->clip); continue; }
+        float duration = model->clips[clip].duration;
+        /* A block has no live window, so it is sampled across the whole clip
+           rather than across a window stated backwards. */
+        float from = attack->active_to > attack->active_from
+                     ? attack->active_from : 0.0f;
+        float to = attack->active_to > attack->active_from
+                   ? attack->active_to : 1.0f;
+        const float at[3] = { from, (from + to) * 0.5f, to };
+        for (int k = 0; k < 3; ++k) {
+            Pose pose;
+            Mat4 hand;
+            if (!viewmodel_clip_arms_pose(model, clip, at[k] * duration, melee,
+                                          &pose, &hand)) {
+                expect(0, attack->clip);
+                break;
+            }
+            float x = hand.m[12], y = hand.m[13], z = hand.m[14];
+            int ok = fabsf(x) < 0.9f && y > -0.9f && y < 0.7f && z < 0.3f;
+            if (!ok) ++failures;
+            printf("  %s %-28s at %.2f  %+.3f %+.3f %+.3f\n",
+                   ok ? "ok  " : "FAIL", attack->clip, at[k], x, y, z);
+        }
+    }
+}
+
 int main(void) {
     const WeaponSpec* spec = &WEAPON_SPEC_ASSAULT_RIFLE;
     check_pose_matches_gl(spec);
@@ -1854,6 +1895,13 @@ int main(void) {
         printf("\n4. arm placements: SKIPPED, rig would not load: %s\n", error);
         ++failures;
     } else {
+        /* The sword clips ship in the second library, so a probe that loaded
+           only the first would report every one of them missing. */
+        if (!skinned_model_add_clips(&model,
+                                     "models/animations/UAL2_Standard.glb",
+                                     error, sizeof error))
+            printf("note: extra clips not loaded (%s)\n", error);
+        check_clip_arms(&WEAPON_SPEC_KATANA, &model);
         ArmRig rig;
         if (check_arms(spec, &model, &rig)) {
             check_reload(spec, &rig);

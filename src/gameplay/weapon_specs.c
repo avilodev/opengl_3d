@@ -229,7 +229,14 @@ static const MeleeSpec KATANA_MELEE = {
     .attack_count = 5,
     .light_attack = 0, .heavy_attack = 3, .block_attack = 4,
 
-    .view_clip_offset = { 0.0f, 0.0f, 0.0f },   /* tuned in Task 7 */
+    /* Forward and a little up. These clips were staged for a camera behind
+       the body, where a wind-up that takes the hand back past the shoulder is
+       just a wind-up; on a camera sitting at the shoulder line the same frames
+       put the hand behind the eye, where it draws perfectly happily and is
+       never seen. Measured against the widest of the five - Sword_Heavy_Combo
+       reaches z +0.49 at its midpoint - with enough margin that the light
+       chain does not graze the near plane. */
+    .view_clip_offset = { 0.0f, 0.10f, -0.35f },
 };
 
 const WeaponSpec WEAPON_SPEC_KATANA = {

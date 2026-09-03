@@ -28,6 +28,7 @@ DEPS := $(OBJS:.o=.d)
 PROBE := bin/viewmodel_probe
 PROBE_CC := gcc
 PROBE_SRCS := tools/viewmodel_probe.c src/render/arm_placement.c \
+              src/render/viewmodel_clip_arms.c \
               src/gameplay/viewmodel_pose.c src/gameplay/weapon_spec.c \
               src/gameplay/weapon_specs.c src/gameplay/sights.c \
               src/render/skinned_model_glb.c src/render/skinned_pose.c \
