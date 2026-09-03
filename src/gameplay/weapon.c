@@ -8,6 +8,7 @@
 #include "gameplay/combatant.h"
 #include "utils/math_utils.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include <stddef.h>
@@ -436,6 +437,31 @@ static void melee_update(Weapon* weapon, const WeaponCommand* command,
     const MeleeSpec* melee = weapon_spec_melee(weapon->spec);
     if (!melee) return;
 
+    int wants_attack = command->attack_pressed || command->heavy_pressed;
+
+    /* Attacking with the sword away draws it. The player asked to swing, and
+       answering "you were sheathed" is the game arguing with an input it
+       understood perfectly well - so the draw starts and the swing is
+       remembered until it lands. A sheathe already running is reversed on the
+       spot for the same reason. */
+    if (wants_attack &&
+        (weapon->sheathed ||
+         weapon->melee_action == WEAPON_MELEE_ACTION_SHEATHE)) {
+        if (weapon->melee_action == WEAPON_MELEE_ACTION_SHEATHE) {
+            /* Turn round rather than finish putting it away and take it out
+               again. Entering the draw where the sheathe had got to keeps the
+               sword where it is on the frame the player changed their mind. */
+            weapon->melee_action_progress =
+                1.0f - weapon->melee_action_progress;
+            weapon->melee_action = WEAPON_MELEE_ACTION_DRAW;
+            weapon->sheathed = 0;
+        } else {
+            weapon_toggle_sheathe(weapon);
+        }
+        weapon->melee_attack_buffered = 1;
+        weapon->melee_heavy_buffered = command->heavy_pressed ? 1 : 0;
+    }
+
     /* A sword in its scabbard, or halfway out of one, swings at nothing. The
        draw has to finish first, which is what makes drawing a commitment
        rather than a free animation the player can attack through. */
@@ -477,6 +503,32 @@ static void melee_update(Weapon* weapon, const WeaponCommand* command,
     }
 
     if (busy) return;
+
+    /* The draw has landed, so the swing that started it happens now. */
+    if (weapon->melee_attack_buffered) {
+        int entry = weapon->melee_heavy_buffered ? melee->heavy_attack
+                                                 : melee->light_attack;
+        weapon->melee_attack_buffered = 0;
+        weapon->melee_heavy_buffered = 0;
+        weapon->melee_quiet_time = 0.0f;
+        melee_start(weapon, entry, MELEE_ATTACK_SECONDS);
+        return;
+    }
+
+    /* And a sword nobody has used for long enough puts itself away. Counted
+       only while it is genuinely idle - an attack, a recovery, a block or a
+       held input all reset it - so a chain never races the clock, and a player
+       standing guard does not have the sword taken out of their hands. */
+    if (weapon->melee_attack >= 0 || wants_attack || command->block_held) {
+        weapon->melee_quiet_time = 0.0f;
+    } else if (!weapon->sheathed) {
+        weapon->melee_quiet_time += delta_time;
+        if (weapon->melee_quiet_time >= MELEE_AUTO_SHEATHE_SECONDS) {
+            weapon->melee_quiet_time = 0.0f;
+            weapon_toggle_sheathe(weapon);
+            return;
+        }
+    }
 
     /* Block: held, and refused while the current attack is live. A block that
        cancelled a swing already in its window would let a player attack and
@@ -883,6 +935,10 @@ void weapon_init(Weapon* weapon, const WeaponSpec* spec) {
        firearm keeps these at rest for its whole life. */
     melee_swing_end(&weapon->swing);
     weapon->blade_valid = 0;
+    weapon->melee_quiet_time = 0.0f;
+    weapon->melee_attack_buffered = 0;
+    weapon->melee_heavy_buffered = 0;
+    weapon->melee_recovering = 0;
     weapon->melee_action = WEAPON_MELEE_ACTION_NONE;
     weapon->melee_action_progress = 0.0f;
     weapon->melee_attack = -1;
@@ -920,8 +976,9 @@ static void advance_melee_action(Weapon* weapon, float delta_time) {
     weapon->melee_action_progress = 0.0f;
     if (weapon->melee_action == WEAPON_MELEE_ACTION_SHEATHE)
         weapon->sheathed = 1;
-    melee_swing_end(&weapon->swing);
-    weapon->blade_valid = 0;
+    /* The action, and nothing else. A draw that finishes must not clear the
+       swing the player buffered to start it - that input is the whole reason
+       the draw is running. */
     weapon->melee_action = WEAPON_MELEE_ACTION_NONE;
 }
 

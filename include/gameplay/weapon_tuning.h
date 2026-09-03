@@ -329,4 +329,10 @@
    one reads as the weapon being taken away from the player. */
 #define MELEE_RECOVER_SECONDS 0.30f
 
+/* How long a drawn sword waits before putting itself away. Long enough to
+   cross a room between two fights without it sheathing in the player's hands,
+   short enough that walking away from a fight ends it. Counted from the end of
+   the last attack, so a chain does not race it. */
+#define MELEE_AUTO_SHEATHE_SECONDS 3.0f
+
 #endif

@@ -185,7 +185,35 @@ int main(void) {
        and hand_l both sit at positive x in the bind pose, so a scabbard at
        negative x would be worn on the right hip - where the drawing hand
        cannot reach it, and where nothing about a still screenshot says so. */
-    expect(saya.m[12] > hips.m[12], "the scabbard is on the body's left");
+    /* Which side is which, established from the rig rather than assumed. The
+       bind pose puts thigh_l and hand_l at POSITIVE x and their _r twins at
+       negative, so this rig's own left is +x - which is also what a body
+       facing +Z with +Y up gives: right is forward cross up, and Z cross Y is
+       -X. Both halves of the sword's placement are checked against that one
+       measurement rather than against anybody's intuition. */
+    Mat4 left_hand, right_hand;
+    int has_hands =
+        skinned_model_bone_matrix(&model, &pose, "hand_l", &left_hand) &&
+        skinned_model_bone_matrix(&model, &pose, "hand_r", &right_hand);
+    expect(has_hands && left_hand.m[12] > right_hand.m[12],
+           "the rig's left is +x, measured off hand_l against hand_r");
+
+    expect(saya.m[12] > hips.m[12], "the scabbard is on the body's LEFT hip");
+
+    /* And the sword itself is in the other hand. character_held_weapon_transform
+       hangs it off hand_r, so this is really asking whether that bone is the
+       one at negative x - which is the same question as above, asked from the
+       side that would put a katana in the wrong fist. */
+    Mat4 held;
+    if (character_held_weapon_transform(&model, &pose, &held))
+        expect(held.m[12] < hips.m[12], "the sword is in the RIGHT hand");
+    else
+        expect(0, "the rig has a hand to hold the sword with");
+
+    /* The two are on opposite sides of the body, which is the whole point:
+       a katana is drawn by crossing the right hand to the left hip. */
+    expect(held.m[12] < hips.m[12] && saya.m[12] > hips.m[12],
+           "hand and scabbard are on opposite sides");
 
     /* The blade has to fit in the scabbard it is drawn from.
 

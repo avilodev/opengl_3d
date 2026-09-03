@@ -198,9 +198,11 @@ int main(void) {
     printf("Controls: WASD moves, Q/E lean, Shift sprints, Ctrl slides, Space jumps, F grapples, V cycles view, B looks from the front, Escape pauses.\n");
     /* Two weapons, two sets of buttons on the same two mice. */
     if (weapon_spec_melee(weapon.spec))
-        printf("Weapon: %s - Left Mouse swings (again inside a swing to chain "
-               "it), Right Mouse blocks, both together for the heavy, R draws "
-               "and sheathes.\n", weapon.spec->name);
+        printf("Weapon: %s - Left Mouse swings and draws it if it is away "
+               "(again inside a swing to chain it), Right Mouse blocks, both "
+               "together for the heavy, R sheathes. It puts itself away after "
+               "%.0f seconds unused.\n",
+               weapon.spec->name, (double)MELEE_AUTO_SHEATHE_SECONDS);
     else
     printf("Weapon: %s - hold Left Mouse to fire, Right Mouse to aim, R reloads.\n",
            weapon.spec->name);

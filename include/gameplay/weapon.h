@@ -194,6 +194,19 @@ typedef struct {
     WeaponMeleeAction melee_action;
     float melee_action_progress;
 
+    /* Seconds since the sword last did anything. A weapon that has been idle
+       long enough puts itself away, which is what keeps a sword from being
+       carried drawn through every corridor between fights - and what makes
+       drawing it mean something when it happens.
+
+       An attack pressed while it is away buffers here rather than being
+       dropped: the player asked to swing, and answering "you were sheathed"
+       is the game arguing with an input it understood perfectly well. It fires
+       the moment the draw lands. */
+    float melee_quiet_time;
+    int melee_attack_buffered;
+    int melee_heavy_buffered;
+
     int melee_attack;
     /* Whether what is playing is the attack or the recovery that follows it.
        The same index either way, because a recovery belongs to its attack and

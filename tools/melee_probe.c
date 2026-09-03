@@ -197,14 +197,131 @@ static void check_chain(void) {
               (float)weapon.melee_attack, (float)melee->block_attack, 0.0f);
     }
 
-    printf("\na sheathed sword swings at nothing\n");
+    printf("\nattacking draws the sword first\n");
     {
         Weapon weapon;
         weapon_init(&weapon, &WEAPON_SPEC_KATANA);
         check("a katana starts sheathed", (float)weapon.sheathed, 1.0f, 0.0f);
+
         step(&weapon, &player, 1, 0, 0.0f);
-        check("and does not swing", (float)weapon.melee_attack, -1.0f, 0.0f);
+        check("the attack starts a draw", (float)weapon.melee_action,
+              (float)WEAPON_MELEE_ACTION_DRAW, 0.0f);
+        /* Not mid-draw: the blade is still travelling out of the scabbard,
+           and a swing there would be a swing through the saya. */
+        check("and does not swing yet", (float)weapon.melee_attack, -1.0f, 0.0f);
+
+        /* And the moment the draw lands, the swing the player asked for
+           happens - the input is buffered, not dropped. */
+        const MeleeSpec* spec_melee = weapon_spec_melee(&WEAPON_SPEC_KATANA);
+        step(&weapon, &player, 0, 0, spec_melee->draw_time * 1.01f);
+        check("the draw finishes", (float)weapon.melee_action,
+              (float)WEAPON_MELEE_ACTION_NONE, 0.0f);
+        check("and the buffered swing lands", (float)weapon.melee_attack,
+              (float)melee->light_attack, 0.0f);
     }
+
+    printf("\nand an idle sword puts itself away\n");
+    {
+        const MeleeSpec* spec_melee = weapon_spec_melee(&WEAPON_SPEC_KATANA);
+        Weapon weapon;
+        weapon_init(&weapon, &WEAPON_SPEC_KATANA);
+        weapon.sheathed = 0;
+
+        /* Just short of the timeout, it is still in hand. */
+        step(&weapon, &player, 0, 0, MELEE_AUTO_SHEATHE_SECONDS * 0.9f);
+        check("still drawn before the timeout", (float)weapon.sheathed, 0.0f,
+              0.0f);
+        step(&weapon, &player, 0, 0, MELEE_AUTO_SHEATHE_SECONDS * 0.2f);
+        check("and sheathes itself after it", (float)weapon.melee_action,
+              (float)WEAPON_MELEE_ACTION_SHEATHE, 0.0f);
+        step(&weapon, &player, 0, 0, spec_melee->sheathe_time * 1.01f);
+        check("all the way away", (float)weapon.sheathed, 1.0f, 0.0f);
+
+        /* A held block is not idleness. A player standing guard must not have
+           the sword taken out of their hands. */
+        Weapon guard;
+        weapon_init(&guard, &WEAPON_SPEC_KATANA);
+        guard.sheathed = 0;
+        for (int i = 0; i < 8; ++i)
+            step(&guard, &player, 0, 1, MELEE_AUTO_SHEATHE_SECONDS * 0.5f);
+        check("blocking is not idling", (float)guard.sheathed, 0.0f, 0.0f);
+
+        /* Nor is swinging: a chain must never race the clock. */
+        Weapon busy;
+        weapon_init(&busy, &WEAPON_SPEC_KATANA);
+        busy.sheathed = 0;
+        for (int i = 0; i < 8; ++i) {
+            step(&busy, &player, 1, 0, 0.0f);
+            step(&busy, &player, 0, 0, MELEE_ATTACK_SECONDS * 0.5f);
+        }
+        check("swinging is not idling", (float)busy.sheathed, 0.0f, 0.0f);
+    }
+}
+
+/* The whole path, exactly as the game runs it: an input into weapon_update, a
+   blade transform published by the frame, and a body that loses health.
+
+   The checks above all reach into melee_swing directly, which proves the sweep
+   is right and proves nothing at all about whether anything calls it. This is
+   the one that answers "does the sword actually cut": if the wiring between
+   the input, the clock, the published transform and the swing is broken
+   anywhere along its length, the number below stays at full health and every
+   other check in this file still passes. */
+static void check_end_to_end(void) {
+    printf("\nthe blade cuts, driven the way the game drives it\n");
+
+    PlayerController player;
+    memset(&player, 0, sizeof player);
+    player.ground.is_grounded = 1;
+
+    CombatantSet set;
+    one_body(&set, 0.0f, -0.6f);
+    float before = set.items[0].health;
+
+    Weapon weapon;
+    weapon_init(&weapon, &WEAPON_SPEC_KATANA);
+    weapon_set_targets(&weapon, &set);
+    weapon.sheathed = 0;   /* drawn, as it is a moment after any first swing */
+
+    /* The blade swept across the body over the attack, published every step
+       the way main.c publishes it off the body's own hand. */
+    const float STEP = 1.0f / 60.0f;
+    Mat4 start = at(-0.5f, 0.0f);
+    weapon_set_blade_transform(&weapon, &start, 1);
+
+    step(&weapon, &player, 1, 0, 0.0f);
+    check("the swing starts", (float)weapon.melee_attack, 0.0f, 0.0f);
+
+    for (int f = 0; f < 40 && weapon.melee_attack >= 0; ++f) {
+        float t = (float)f / 39.0f;
+        Mat4 now = at(-0.5f + t * 1.0f, 0.0f);
+        weapon_set_blade_transform(&weapon, &now, 1);
+        step(&weapon, &player, 0, 0, STEP);
+    }
+
+    float taken = before - set.items[0].health;
+    if (taken <= 0.0f) {
+        ++failures;
+        printf("  FAIL the body took nothing - the blade does not cut\n");
+    } else {
+        printf("  ok   the body took %.1f\n", taken);
+    }
+
+    /* And a sheathed sword cuts nothing, however hard it is swung. */
+    CombatantSet safe;
+    one_body(&safe, 0.0f, -0.6f);
+    float safe_before = safe.items[0].health;
+    Weapon away;
+    weapon_init(&away, &WEAPON_SPEC_KATANA);
+    weapon_set_targets(&away, &safe);
+    for (int f = 0; f < 40; ++f) {
+        float t = (float)f / 39.0f;
+        Mat4 now = at(-0.5f + t * 1.0f, 0.0f);
+        weapon_set_blade_transform(&away, &now, 1);
+        step(&away, &player, 0, 0, STEP);
+    }
+    check("a sheathed sword cuts nothing",
+          safe_before - safe.items[0].health, 0.0f, 0.0f);
 }
 
 int main(void) {
@@ -291,6 +408,7 @@ int main(void) {
     }
 
     check_chain();
+    check_end_to_end();
 
     printf("\n%s\n", failures ? "FAILURES" : "all checks passed");
     return failures != 0;
