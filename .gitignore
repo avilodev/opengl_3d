@@ -1,0 +1,5 @@
+obj/
+bin/
+*.blend
+*.blend1
+run.log
