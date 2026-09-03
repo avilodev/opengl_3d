@@ -43,7 +43,12 @@
    to know the rifle exists. Drawn inside the rig's scale, so a body standing
    two and a half metres tall carries a rifle in proportion to itself rather
    than a real one that would read as a toy in its hands. */
-static void draw_held_weapon(const SkinnedModel* model, const Pose* pose) {
+static void draw_held_weapon(const SkinnedModel* model, const Pose* pose,
+                             const WeaponSpec* spec) {
+    /* Empty hands draw nothing, which is what a body carrying no weapon should
+       look like. */
+    if (!spec) return;
+
     /* The same transform a tracer asks for when it needs to know where this
        gun's barrel is - see character_transform.h. Composed there rather than
        here so the drawn gun and the streak leaving it cannot be two answers. */
@@ -52,18 +57,17 @@ static void draw_held_weapon(const SkinnedModel* model, const Pose* pose) {
 
     glPushMatrix();
     glMultMatrixf(grip.m);
-    /* The same parts left off as in first person: the body carries the issued
-       weapon, so it carries it built the same way. Taking the list from the
-       spec rather than repeating it here is what stops the third-person gun
-       growing furniture the first-person one has had removed. */
-    weapon_model_draw(&WEAPON_SPEC_ASSAULT_RIFLE,
-                      WEAPON_SPEC_ASSAULT_RIFLE.hidden_parts);
-    /* And its optic, on the same rail the viewmodel bolts one to. The body
-       carries the issued weapon, so it carries the issued weapon's sight -
-       taking both from the spec rather than from a second set of numbers here
-       is what keeps the gun the player sees in third person the gun they were
-       just holding. */
-    weapon_renderer_draw_sight(&WEAPON_SPEC_ASSAULT_RIFLE);
+    /* The same parts left off as in first person: the body carries the weapon
+       it is holding, so it carries it built the same way. Taking the list from
+       that weapon's own spec rather than repeating it here is what stops the
+       third-person gun growing furniture the first-person one has had
+       removed. */
+    weapon_model_draw(spec, spec->hidden_parts);
+    /* And its optic, on the same rail the viewmodel bolts one to. A weapon
+       with no gun half has no rail and so nothing to bolt - which is the check
+       here rather than a null test on the sight, because it is the class that
+       decides whether the question makes sense at all. */
+    if (weapon_spec_firearm(spec)) weapon_renderer_draw_sight(spec);
     glPopMatrix();
 }
 
@@ -108,7 +112,7 @@ static int hang_grip_pose_space(const SkinnedModel* model,
 static void draw_model_body(const SkinnedModel* model,
                             const CharacterInstance* instance) {
     skinned_model_draw(model, &instance->skin);
-    draw_held_weapon(model, &instance->pose);
+    draw_held_weapon(model, &instance->pose, instance->weapon);
 }
 
 /* The original rig, still the fallback. Its one animation is a stride, which
@@ -151,6 +155,9 @@ void character_instance_init(CharacterInstance* instance, int rig) {
     if (!instance) return;
     memset(instance, 0, sizeof *instance);
     instance->rig = rig;
+    /* Empty hands until a caller says otherwise. A body that draws nothing is
+       a better default than one that draws somebody else's rifle. */
+    instance->weapon = NULL;
 }
 
 void character_renderer_update(CharacterLibrary* library, CharacterInstance* instance,

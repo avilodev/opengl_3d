@@ -173,6 +173,10 @@ int main(void) {
     /* The auto pistol (WEAPON_SPEC_AUTO_PISTOL) is still here and still
        works; the player is simply not carrying it yet. */
     weapon_init(&weapon, &WEAPON_SPEC_ASSAULT_RIFLE);
+    /* The body in third person holds what the hands in first person hold. One
+       assignment, off the weapon rather than off a second name for it, so the
+       two views cannot end up carrying different guns. */
+    body.weapon = weapon.spec;
     /* What its rounds can land on. Published once: the set of bodies in the
        world outlives every shot, and a weapon that was handed them per step
        would be a weapon whose signature grew every time the world did. */

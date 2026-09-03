@@ -5,6 +5,7 @@
 #include "render/character_library.h"
 #include "render/character_state.h"
 #include "render/skinned_model.h"
+#include "gameplay/weapon_spec.h"
 
 /* Draws a character's body. This is the character rig, not renderer plumbing:
    it owns proportions, colours, and how movement state reads as a pose.
@@ -29,6 +30,19 @@ typedef struct {
        freed models. CHARACTER_RIG_NONE, or an index the library never handed
        out, draws the box fallback. */
     int rig;
+
+    /* What this body is holding, or NULL for empty hands.
+
+       The renderer used to name WEAPON_SPEC_ASSAULT_RIFLE where it drew the
+       gun in the hand, which meant every body in the world carried the issued
+       rifle whatever it was actually holding - and meant a second weapon could
+       not be seen in third person at all, however carefully the first-person
+       half had been taught about it. A pointer per body is what makes the two
+       views agree by construction rather than by both being edited.
+
+       Not owned: specs are static and outlive every body that points at one. */
+    const WeaponSpec* weapon;
+
     CharacterAnimation animation;
     Pose pose;
     SkinnedInstance skin;
