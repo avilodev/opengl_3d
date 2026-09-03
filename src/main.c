@@ -478,16 +478,26 @@ int main(void) {
            frame, which is what the comparison against the last one is for. */
         {
             static int played_attack = -2;
+            static int played_recovery = -1;
             const SkinnedModel* rig = character_library_model(&characters,
                                                               body.rig);
             const MeleeSpec* body_melee = weapon_spec_melee(weapon.spec);
-            if (rig && body_melee && weapon.melee_attack != played_attack) {
+            if (rig && body_melee &&
+                (weapon.melee_attack != played_attack ||
+                 weapon.melee_recovering != played_recovery)) {
                 played_attack = weapon.melee_attack;
+                played_recovery = weapon.melee_recovering;
                 if (weapon.melee_attack >= 0) {
+                    /* Whichever half of the attack is running - the swing or
+                       the settle after it - asked of the weapon rather than
+                       worked out here, so the body plays what the blade is
+                       doing and not a second opinion about it. */
+                    float time = 0.0f;
                     int clip = skinned_model_find_clip(rig,
-                        body_melee->attacks[weapon.melee_attack].clip);
+                        weapon_melee_clip(&weapon, &time));
                     character_animation_play_oneshot(&body.animation, rig, clip,
-                                                     MELEE_ATTACK_SECONDS);
+                        weapon.melee_recovering ? MELEE_RECOVER_SECONDS
+                                                : MELEE_ATTACK_SECONDS);
                 }
             }
         }

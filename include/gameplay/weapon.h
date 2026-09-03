@@ -195,6 +195,11 @@ typedef struct {
     float melee_action_progress;
 
     int melee_attack;
+    /* Whether what is playing is the attack or the recovery that follows it.
+       The same index either way, because a recovery belongs to its attack and
+       is not a fourth thing the chain can be in - it is how an attack ENDS
+       when nothing followed it, and it is over as soon as anything does. */
+    int melee_recovering;
     float melee_time;
     float melee_duration;
     int sheathed;

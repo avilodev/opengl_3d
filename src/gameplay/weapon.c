@@ -400,6 +400,10 @@ void weapon_sight_center(const Weapon* weapon, const PlayerController* player,
    start that a rounding error could open. */
 static int melee_live(const MeleeSpec* melee, const Weapon* weapon) {
     if (weapon->melee_attack < 0) return 0;
+    /* A recovery is the arm coming back. It is never live, and its clock runs
+       against a different duration, so reading the attack's own window
+       fractions against it would answer a question about the wrong clip. */
+    if (weapon->melee_recovering) return 0;
     const MeleeAttack* attack = &melee->attacks[weapon->melee_attack];
     if (attack->active_to <= attack->active_from) return 0;
     float t = weapon->melee_duration > 0.0f
@@ -409,6 +413,7 @@ static int melee_live(const MeleeSpec* melee, const Weapon* weapon) {
 
 static void melee_start(Weapon* weapon, int attack, float duration) {
     weapon->melee_attack = attack;
+    weapon->melee_recovering = 0;
     weapon->melee_time = 0.0f;
     weapon->melee_duration = duration;
     /* The hit list, which is what makes one body one swing. Cleared per ATTACK
@@ -419,6 +424,7 @@ static void melee_start(Weapon* weapon, int attack, float duration) {
 
 static void melee_idle(Weapon* weapon) {
     weapon->melee_attack = -1;
+    weapon->melee_recovering = 0;
     weapon->melee_time = 0.0f;
     weapon->melee_duration = 0.0f;
     melee_swing_end(&weapon->swing);
@@ -441,14 +447,33 @@ static void melee_update(Weapon* weapon, const WeaponCommand* command,
 
         /* The blade, swept between where it was and where it is. Before the
            chain advance below, so the frame an attack ends still pays out the
-           part of its window that ran. */
-        if (weapon->blade_valid && weapon->targets && weapon->melee_duration > 0.0f)
+           part of its window that ran.
+
+           Never during a recovery: that is the arm coming back through the
+           space the cut went through, and a blade live on the way back would
+           hit twice for one swing in the one case the hit list cannot catch -
+           a second body stepping into the arc. */
+        if (!weapon->melee_recovering && weapon->blade_valid &&
+            weapon->targets && weapon->melee_duration > 0.0f)
             melee_swing_update(&weapon->swing, weapon->spec,
                                &weapon->blade_previous, &weapon->blade_now,
                                weapon->melee_time / weapon->melee_duration,
                                weapon->targets);
 
-        if (weapon->melee_time >= weapon->melee_duration) melee_idle(weapon);
+        if (weapon->melee_time >= weapon->melee_duration) {
+            /* An attack that nothing followed settles through its recovery
+               before the weapon is idle again. Only A and B ship one; C ends
+               the chain and recovers into the hold pose, which is what a NULL
+               here means rather than an omission. */
+            const MeleeAttack* done = &melee->attacks[weapon->melee_attack];
+            if (!weapon->melee_recovering && done->recovery) {
+                weapon->melee_recovering = 1;
+                weapon->melee_time = 0.0f;
+                weapon->melee_duration = MELEE_RECOVER_SECONDS;
+            } else {
+                melee_idle(weapon);
+            }
+        }
     }
 
     if (busy) return;
@@ -469,7 +494,7 @@ static void melee_update(Weapon* weapon, const WeaponCommand* command,
 
     if (!command->attack_pressed && !command->heavy_pressed) return;
 
-    if (weapon->melee_attack < 0) {
+    if (weapon->melee_attack < 0 || weapon->melee_recovering) {
         int entry = command->heavy_pressed ? melee->heavy_attack
                                            : melee->light_attack;
         melee_start(weapon, entry, MELEE_ATTACK_SECONDS);
@@ -521,8 +546,11 @@ const char* weapon_melee_clip(const Weapon* weapon, float* time_out) {
     if (!melee) return NULL;
     if (weapon->melee_attack >= 0 &&
         weapon->melee_attack < melee->attack_count) {
+        const MeleeAttack* attack = &melee->attacks[weapon->melee_attack];
         if (time_out) *time_out = weapon->melee_time;
-        return melee->attacks[weapon->melee_attack].clip;
+        if (weapon->melee_recovering && attack->recovery)
+            return attack->recovery;
+        return attack->clip;
     }
     /* Idle: the hold pose, which is the same clip the third-person body holds
        the sword in. One name, so the two views cannot drift into holding it

@@ -115,14 +115,61 @@ static void check_chain(void) {
         check("and stops at C", (float)weapon.melee_attack, (float)was, 0.0f);
     }
 
+    printf("\nan unchained swing settles through its recovery\n");
+    {
+        Weapon weapon;
+        weapon_init(&weapon, &WEAPON_SPEC_KATANA);
+        weapon.sheathed = 0;
+        step(&weapon, &player, 1, 0, 0.0f);
+        step(&weapon, &player, 0, 0, MELEE_ATTACK_SECONDS * 1.01f);
+        check("A recovers rather than going idle",
+              (float)weapon.melee_recovering, 1.0f, 0.0f);
+        check("and is still its own attack", (float)weapon.melee_attack,
+              (float)melee->light_attack, 0.0f);
+        /* The recovery is cancellable - that is what a recovery is for. */
+        step(&weapon, &player, 1, 0, 0.0f);
+        check("an input cancels it into a fresh swing",
+              (float)weapon.melee_recovering, 0.0f, 0.0f);
+
+        /* And left alone it runs out into nothing. */
+        Weapon settled;
+        weapon_init(&settled, &WEAPON_SPEC_KATANA);
+        settled.sheathed = 0;
+        step(&settled, &player, 1, 0, 0.0f);
+        step(&settled, &player, 0, 0, MELEE_ATTACK_SECONDS * 1.01f);
+        step(&settled, &player, 0, 0, MELEE_RECOVER_SECONDS * 1.01f);
+        check("left alone it goes idle", (float)settled.melee_attack, -1.0f,
+              0.0f);
+
+        /* C ends the chain and has no recovery clip, so it goes straight to
+           idle rather than settling through one that does not exist. */
+        Weapon ended;
+        weapon_init(&ended, &WEAPON_SPEC_KATANA);
+        ended.sheathed = 0;
+        const MeleeAttack* a0 = &melee->attacks[melee->light_attack];
+        float m0 = (a0->active_from + a0->active_to) * 0.5f;
+        step(&ended, &player, 1, 0, 0.0f);
+        step(&ended, &player, 0, 0, MELEE_ATTACK_SECONDS * m0);
+        step(&ended, &player, 1, 0, 0.0f);
+        const MeleeAttack* b0 = &melee->attacks[a0->next];
+        float m1 = (b0->active_from + b0->active_to) * 0.5f;
+        step(&ended, &player, 0, 0, MELEE_ATTACK_SECONDS * m1);
+        step(&ended, &player, 1, 0, 0.0f);
+        step(&ended, &player, 0, 0, MELEE_ATTACK_SECONDS * 1.01f);
+        check("C has no recovery and goes idle", (float)ended.melee_attack,
+              -1.0f, 0.0f);
+    }
+
     printf("\nan input outside the window starts over\n");
     {
         Weapon weapon;
         weapon_init(&weapon, &WEAPON_SPEC_KATANA);
         weapon.sheathed = 0;
         step(&weapon, &player, 1, 0, 0.0f);
-        /* Past the end of the attack entirely, so it has expired. */
+        /* Past the end of the attack and its recovery both, so the weapon is
+           idle rather than mid-settle. */
         step(&weapon, &player, 0, 0, MELEE_ATTACK_SECONDS * 1.1f);
+        step(&weapon, &player, 0, 0, MELEE_RECOVER_SECONDS * 1.1f);
         check("the attack expires", (float)weapon.melee_attack, -1.0f, 0.0f);
         step(&weapon, &player, 1, 0, 0.0f);
         check("and the next input opens the chain again",

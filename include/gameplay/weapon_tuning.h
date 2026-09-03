@@ -324,4 +324,9 @@
 #define MELEE_ATTACK_SECONDS 0.55f
 #define MELEE_BLOCK_HOLD 3600.0f
 
+/* And how long the settle after an unchained swing runs. Shorter than the
+   swing: a recovery is the arm coming back, not another decision, and a long
+   one reads as the weapon being taken away from the player. */
+#define MELEE_RECOVER_SECONDS 0.30f
+
 #endif
