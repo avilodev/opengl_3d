@@ -188,6 +188,66 @@ const WeaponSpec WEAPON_SPEC_ASSAULT_RIFLE = {
     .clips = {{ "Pistol_Aim_Down", "Pistol_Aim_Neutral", "Pistol_Aim_Up" }},
 };
 
+/* Getting the katana out of the saya and back into it, in camera space.
+
+   Three facts fix these numbers and only the fourth is taste. The koiguchi is
+   where the spec's own scabbard offsets put it, taken through the half turn
+   the arms take. The blade axis is where the cant points it, which for this
+   cant is back, left and a little down. And the blade is 0.79m long, so the
+   grip has to travel that whole distance along that axis before the tip is
+   clear - there is no shortcut, and a draw that swings the sword forward
+   before then is a blade going through the scabbard wall. The ready pose is
+   where Sword_Idle puts the hand, so the track hands over to the hold with
+   nothing to cross-fade.
+
+   That the middle of a katana draw goes behind the camera is not a mistake in
+   the numbers. It is where the sword is: it is beside and behind the hip, and
+   it comes forward only once it is out. */
+static const ActionKey KATANA_DRAW_KEYS[] = {
+    /* The hand at rest by the side, which is where a draw starts from. */
+    { .at = 0.00f, .ease = ACTION_EASE_SMOOTH,
+      .hand_frame = ACTION_IN_VIEW, .hand = { 0.10f, -0.85f, -0.20f } },
+    /* Down and across to the tsuka, and closed on it. */
+    { .at = 0.28f, .ease = ACTION_EASE_SMOOTH,
+      .hand_frame = ACTION_IN_VIEW, .hand = { -0.143f, -0.752f, -0.170f } },
+    /* Out along the blade's own axis, the whole 0.79m of it. SNAP because a
+       draw's energy is all at the start: the arm is already moving when the
+       blade begins to leave, and it slows as the tip comes clear. */
+    { .at = 0.62f, .ease = ACTION_EASE_SNAP,
+      .hand_frame = ACTION_IN_VIEW, .hand = { -0.265f, -0.877f, 0.604f } },
+    /* And round into the ready pose, which is where Sword_Idle holds it. */
+    { .at = 1.00f, .ease = ACTION_EASE_SMOOTH,
+      .hand_frame = ACTION_IN_VIEW, .hand = { 0.203f, -0.652f, -0.058f } },
+};
+
+static const ActionTrack KATANA_DRAW = {
+    .keys = KATANA_DRAW_KEYS,
+    .count = (int)(sizeof KATANA_DRAW_KEYS / sizeof KATANA_DRAW_KEYS[0]),
+};
+
+/* The same in reverse, and not merely the same played backwards: sheathing is
+   the harder motion of the two and the beat that says so is the tip finding
+   the mouth. That key gets DRIVE - it exists in order to hit something - and
+   the run down into the scabbard after it is one long smooth push. */
+static const ActionKey KATANA_SHEATHE_KEYS[] = {
+    { .at = 0.00f, .ease = ACTION_EASE_SMOOTH,
+      .hand_frame = ACTION_IN_VIEW, .hand = { 0.203f, -0.652f, -0.058f } },
+    /* Sword brought back and lined up with the mouth, tip first. */
+    { .at = 0.42f, .ease = ACTION_EASE_SMOOTH,
+      .hand_frame = ACTION_IN_VIEW, .hand = { -0.265f, -0.877f, 0.604f } },
+    /* Home. */
+    { .at = 0.86f, .ease = ACTION_EASE_DRIVE,
+      .hand_frame = ACTION_IN_VIEW, .hand = { -0.143f, -0.752f, -0.170f } },
+    /* And the hand off it, back to the side. */
+    { .at = 1.00f, .ease = ACTION_EASE_SMOOTH,
+      .hand_frame = ACTION_IN_VIEW, .hand = { 0.10f, -0.85f, -0.20f } },
+};
+
+static const ActionTrack KATANA_SHEATHE = {
+    .keys = KATANA_SHEATHE_KEYS,
+    .count = (int)(sizeof KATANA_SHEATHE_KEYS / sizeof KATANA_SHEATHE_KEYS[0]),
+};
+
 /* The katana. Its landmarks come from tools/katana_to_glb.py, which prints
    them every time it runs: the origin is the middle of the tsuka, the guard
    sits at z -0.1131, the tip at z -0.9069, and the saya is 0.7907m deep. */
@@ -199,14 +259,25 @@ static const MeleeSpec KATANA_MELEE = {
     .blade_tip  = { 0.0f, 0.0f, -0.907f },
 
     .scabbard_path = "models/Swords/Katana/katana_saya.glb",
-    /* Left hip, edge up, angled back and down - how one is actually worn.
-       Tuned against the rig in Task 9; these are the starting numbers. */
-    .scabbard_offset = { -0.16f, -0.02f, 0.06f },
-    .scabbard_pitch = -18.0f, .scabbard_yaw = 12.0f, .scabbard_roll = 180.0f,
+    /* Left hip, edge up, blade running back along it so the tsuka sits forward
+       where the right hand can cross to it.
 
-    /* The blade is 0.794m from the guard to the tip and the saya is 0.7907m
-       deep, so a sheathed sword is in as far as it goes. */
-    .sheathed_depth = 0.79f,
+       The rig's own left is +X, measured off it rather than assumed: thigh_l
+       and hand_l both sit at positive x in the bind pose. Stated in the rig's
+       frame, and the first-person draw takes the same numbers through the same
+       half turn the arms do, so one set of angles means one physical thing in
+       both views.
+
+       The cant puts the blade at (+0.15, -0.16, -0.98) in rig space: back,
+       and a little down and out, which is how one hangs. */
+    .scabbard_offset = { 0.16f, -0.02f, 0.06f },
+    .scabbard_pitch = -9.0f, .scabbard_yaw = -9.0f, .scabbard_roll = 180.0f,
+
+    /* The guard sits at z -0.1131 on this mesh, so a sword whose guard is at
+       the mouth has its origin that far back from it. The blade then reaches
+       0.7939m inside a saya that is 0.7907m deep, which is in as far as it
+       goes. */
+    .sheathed_offset = 0.1131f,
 
     .attacks = {
         /* 0-2: the light chain. The active windows are the middle of each
@@ -236,6 +307,14 @@ static const MeleeSpec KATANA_MELEE = {
        never seen. Measured against the widest of the five - Sword_Heavy_Combo
        reaches z +0.49 at its midpoint - with enough margin that the light
        chain does not graze the near plane. */
+    .draw_track = &KATANA_DRAW,
+    .sheathe_track = &KATANA_SHEATHE,
+    /* Fast enough to be a commitment rather than a cutscene, slow enough that
+       the sword is seen leaving the sheath. The sheathe is longer because it
+       is the harder motion and looks careless done quickly. */
+    .draw_time = 0.70f,
+    .sheathe_time = 0.85f,
+
     .view_clip_offset = { 0.0f, 0.10f, -0.35f },
 };
 

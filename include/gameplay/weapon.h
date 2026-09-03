@@ -68,6 +68,12 @@ typedef struct {
     int grounded;
 } WeaponDroppedMag;
 
+typedef enum {
+    WEAPON_MELEE_ACTION_NONE,
+    WEAPON_MELEE_ACTION_DRAW,
+    WEAPON_MELEE_ACTION_SHEATHE
+} WeaponMeleeAction;
+
 typedef struct {
     /* Never null after weapon_init. Points at a static WeaponSpec, so it stays
        valid for the life of the process and costs nothing to copy around. */
@@ -179,6 +185,13 @@ typedef struct {
        which makes the attack the player is in the whole of the combo state -
        the table already says where each one goes next, so there is nothing
        here for a second state machine to disagree with. */
+    /* Which scripted action is running, if any, and how far through it - 0 to
+       1 of the spec's own draw_time or sheathe_time. A draw and a sheathe are
+       the same kind of thing in opposite directions, so they are one clock and
+       a direction rather than two clocks that could both be running. */
+    WeaponMeleeAction melee_action;
+    float melee_action_progress;
+
     int melee_attack;
     float melee_time;
     float melee_duration;
@@ -246,6 +259,11 @@ void weapon_set_melee_base(Weapon* weapon, const ViewmodelPose* base, int valid)
    sword is drawn at and the arms it is drawn in. One derivation read twice,
    rather than two that agree until one of them is edited. */
 const char* weapon_melee_clip(const Weapon* weapon, float* time_out);
+
+/* Starts putting the sword away, or taking it back out - whichever the weapon
+   is not already doing. Ignored on a firearm, and while an action is already
+   running: a draw interrupted halfway is a sword in two places. */
+void weapon_toggle_sheathe(Weapon* weapon);
 
 /* Where the visible streak starts, in world units. The round itself always
    leaves the eye - what the crosshair covers is what it hits - so this places

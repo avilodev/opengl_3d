@@ -54,6 +54,7 @@ BODY_PROBE_SRCS := tools/body_probe.c src/render/character_animation.c \
 # tools/sheath_probe.c.
 SHEATH_PROBE := bin/sheath_probe
 SHEATH_PROBE_SRCS := tools/sheath_probe.c src/render/character_transform.c \
+              src/render/arm_placement.c src/gameplay/action_track.c \
               src/render/character_animation.c \
               src/gameplay/weapon_specs.c src/gameplay/weapon_spec.c \
               src/gameplay/viewmodel_pose.c src/gameplay/sights.c \

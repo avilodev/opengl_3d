@@ -156,10 +156,18 @@ typedef struct MeleeSpec {
     float scabbard_offset[3];
     float scabbard_pitch, scabbard_yaw, scabbard_roll;
 
-    /* Where the sword sits inside the scabbard, along the blade's own axis
-       from the koiguchi. A curved blade leaves along its axis and cannot come
-       out sideways, which is what makes this one number rather than a pose. */
-    float sheathed_depth;
+    /* Where the sword's OWN ORIGIN sits when sheathed, measured back from the
+       koiguchi along the blade's axis.
+
+       The origin is the middle of the tsuka, which stays outside the scabbard:
+       only the blade goes in, so this is the short step from the mouth to the
+       middle of the grip and not the depth of the blade inside. Getting those
+       two confused puts the sword a blade's length out in front of the hip,
+       which looks like a placement bug and is a units bug.
+
+       A curved blade leaves along its axis and cannot come out sideways, which
+       is what makes this one number rather than a pose. */
+    float sheathed_offset;
 
     /* What this weapon can do, and the three ways in. The entry points are
        indices into the table rather than a second copy of the data, so a
@@ -167,6 +175,20 @@ typedef struct MeleeSpec {
     MeleeAttack attacks[MELEE_ATTACK_MAX];
     int attack_count;
     int light_attack, heavy_attack, block_attack;
+
+    /* Getting the sword out of the scabbard and back into it.
+
+       Tracks and not clips, because the library ships neither: a draw is a
+       path between two points this spec already states - the koiguchi and the
+       ready pose - and a path between stated points is what an ActionTrack is
+       for. The reload was the first user of that type and is no longer its
+       only one.
+
+       Seconds, not a fraction: a draw has its own length and does not scale
+       with anything else the weapon does. */
+    const ActionTrack* draw_track;
+    const ActionTrack* sheathe_track;
+    float draw_time, sheathe_time;
 
     /* Pulls the clip-driven arms into frame. Those clips were staged for a
        camera behind the body; in first person the same motion needs bringing

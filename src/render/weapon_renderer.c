@@ -3,6 +3,7 @@
 #include "render/weapon_model.h"
 #include "render/viewmodel_arms.h"
 #include "render/viewmodel_clip_arms.h"
+#include "render/arm_placement.h"
 #include "render/character_library.h"
 #include "gameplay/weapon_tuning.h"
 #include "gameplay/movement_tuning.h"
@@ -878,9 +879,16 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
         const MeleeSpec* melee = weapon_spec_melee(weapon->spec);
         if (melee && melee->scabbard_path) {
             glPushMatrix();
-            glTranslatef(melee->scabbard_offset[0],
-                         melee->scabbard_offset[1] - VIEWMODEL_HIP_BELOW_EYE,
-                         melee->scabbard_offset[2]);
+            /* Through the same half turn the arms take. The spec's offsets
+               and angles are stated in the RIG's frame, where the body faces
+               +Z; the camera looks down -Z. Without this the sword would hang
+               correctly on a third-person hip and point out through the
+               player's front in first person, off one set of numbers that
+               looked right in both places separately. */
+            float worn[3];
+            arm_placement_rig_to_camera(melee->scabbard_offset, 0.0f, worn);
+            glTranslatef(worn[0], worn[1] - VIEWMODEL_HIP_BELOW_EYE, worn[2]);
+            glRotatef(ARMS_FACING_DEGREES, 0, 1, 0);
             glRotatef(melee->scabbard_yaw, 0, 1, 0);
             glRotatef(melee->scabbard_pitch, 1, 0, 0);
             glRotatef(melee->scabbard_roll, 0, 0, 1);

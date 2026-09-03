@@ -134,9 +134,9 @@ static void draw_scabbard(const SkinnedModel* model, const Pose* pose,
         length = sqrtf(length);
         if (length > 1e-6f) {
             glPushMatrix();
-            glTranslatef(-d[0] / length * melee->sheathed_depth,
-                         -d[1] / length * melee->sheathed_depth,
-                         -d[2] / length * melee->sheathed_depth);
+            glTranslatef(-d[0] / length * melee->sheathed_offset,
+                         -d[1] / length * melee->sheathed_offset,
+                         -d[2] / length * melee->sheathed_offset);
             weapon_model_draw(spec, spec->hidden_parts);
             glPopMatrix();
         }

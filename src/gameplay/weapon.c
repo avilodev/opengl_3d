@@ -8,6 +8,7 @@
 #include "gameplay/combatant.h"
 #include "utils/math_utils.h"
 
+#include <string.h>
 #include <math.h>
 #include <stddef.h>
 
@@ -26,6 +27,10 @@ static float random_unit(Weapon* weapon) {
     weapon->random_state = x;
     return (float)(x >> 8) / 16777216.0f;
 }
+
+/* Defined below, beside weapon_toggle_sheathe which is what starts one. */
+static const ActionTrack* melee_action_track(const Weapon* weapon,
+                                             float* seconds);
 
 float weapon_cone_degrees(const Weapon* weapon) {
     /* A weapon with no gun half has no cone at all: its bloom never leaves
@@ -253,7 +258,19 @@ void weapon_viewmodel_pose(const Weapon* weapon, const PlayerController* player,
        exactly the reason a rifle does. A melee weapon whose rig has not been
        sampled yet falls through to the rest pose, which puts it somewhere
        plausible for the frame or two before the arms are ready. */
-    if (weapon_spec_melee(spec) && weapon->melee_base_valid)
+    float action_seconds = 0.0f;
+    const ActionTrack* action = melee_action_track(weapon, &action_seconds);
+    if (action && action->count > 0) {
+        /* A draw or a sheathe overrides the clip: the sword is travelling a
+           path this spec states, and the hold pose is where that path ends
+           rather than something to blend with along the way. */
+        ActionSample key;
+        action_track_sample(action, weapon->melee_action_progress, &key);
+        memset(out, 0, sizeof *out);
+        out->x = lerpf(key.from->hand[0], key.to->hand[0], key.t);
+        out->y = lerpf(key.from->hand[1], key.to->hand[1], key.t);
+        out->z = lerpf(key.from->hand[2], key.to->hand[2], key.t);
+    } else if (weapon_spec_melee(spec) && weapon->melee_base_valid)
         *out = weapon->melee_base;
     else
         weapon_spec_rest_pose(spec, sprint, reload, weapon->ads, out);
@@ -370,6 +387,34 @@ void weapon_sight_center(const Weapon* weapon, const PlayerController* player,
    starts at the barrel, which is what stops a shot from looking like it came
    out of the player's forehead - or, while scoped, out of thin air a foot to
    the right of a gun the player can plainly see is centred. */
+void weapon_toggle_sheathe(Weapon* weapon) {
+    if (!weapon || !weapon_spec_melee(weapon->spec)) return;
+    if (weapon->melee_action != WEAPON_MELEE_ACTION_NONE) return;
+    weapon->melee_action = weapon->sheathed ? WEAPON_MELEE_ACTION_DRAW
+                                            : WEAPON_MELEE_ACTION_SHEATHE;
+    weapon->melee_action_progress = 0.0f;
+    /* The sword is in the hand for the whole of both motions - a draw has it
+       gripped from the first key and a sheathe until the last - so the bit
+       flips at the START of a draw and at the END of a sheathe. Flipping it
+       the other way round would draw a sword that was still in its scabbard,
+       or leave one in mid-air while the hand walked away from it. */
+    if (weapon->melee_action == WEAPON_MELEE_ACTION_DRAW) weapon->sheathed = 0;
+}
+
+/* The track a melee action is running, and how far through it. NULL when
+   nothing is. */
+static const ActionTrack* melee_action_track(const Weapon* weapon,
+                                             float* seconds) {
+    const MeleeSpec* melee = weapon_spec_melee(weapon->spec);
+    if (!melee || weapon->melee_action == WEAPON_MELEE_ACTION_NONE) return NULL;
+    if (weapon->melee_action == WEAPON_MELEE_ACTION_DRAW) {
+        if (seconds) *seconds = melee->draw_time;
+        return melee->draw_track;
+    }
+    if (seconds) *seconds = melee->sheathe_time;
+    return melee->sheathe_track;
+}
+
 const char* weapon_melee_clip(const Weapon* weapon, float* time_out) {
     if (!weapon) return NULL;
     const MeleeSpec* melee = weapon_spec_melee(weapon->spec);
@@ -697,6 +742,8 @@ void weapon_init(Weapon* weapon, const WeaponSpec* spec) {
     /* Idle, and worn rather than held. A melee weapon comes out of its
        scabbard through the draw track rather than starting in the hand, and a
        firearm keeps these at rest for its whole life. */
+    weapon->melee_action = WEAPON_MELEE_ACTION_NONE;
+    weapon->melee_action_progress = 0.0f;
     weapon->melee_attack = -1;
     weapon->melee_time = 0.0f;
     weapon->melee_duration = 0.0f;
@@ -721,7 +768,22 @@ void weapon_latch_trigger(Weapon* weapon) {
     weapon->trigger_latched = 1;
 }
 
+/* The draw or the sheathe, one step on. Ends by handing the body back to the
+   hold pose, and by putting the sword away if that is what it was doing. */
+static void advance_melee_action(Weapon* weapon, float delta_time) {
+    float seconds = 0.0f;
+    if (!melee_action_track(weapon, &seconds)) return;
+    if (seconds <= 0.0f) seconds = 0.001f;
+    weapon->melee_action_progress += delta_time / seconds;
+    if (weapon->melee_action_progress < 1.0f) return;
+    weapon->melee_action_progress = 0.0f;
+    if (weapon->melee_action == WEAPON_MELEE_ACTION_SHEATHE)
+        weapon->sheathed = 1;
+    weapon->melee_action = WEAPON_MELEE_ACTION_NONE;
+}
+
 static void advance_timers(Weapon* weapon, float delta_time) {
+    advance_melee_action(weapon, delta_time);
     /* A weapon with no gun half has no cone to recover, so the whole bloom
        half of this is skipped rather than run against zeroes. */
     const FirearmSpec* gun = weapon_spec_firearm(weapon->spec);
@@ -848,6 +910,15 @@ void weapon_update(Weapon* weapon, const WeaponCommand* command,
             weapon->reload_time_left = 0.0f;
             weapon->ammo_in_magazine = gun ? gun->magazine : 0;
         }
+        return;
+    }
+
+    /* Reload doubles as sheathe on a weapon with nothing to reload. The same
+       key rather than a new binding: R is already "put this weapon into the
+       state it is not in", and a player who has learned it on a rifle has
+       learned it on a sword. */
+    if (command->reload_pressed && weapon_spec_melee(weapon->spec)) {
+        weapon_toggle_sheathe(weapon);
         return;
     }
 
