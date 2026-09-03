@@ -1,20 +1,26 @@
-#ifndef RELOAD_SEQUENCE_H
-#define RELOAD_SEQUENCE_H
+#ifndef ACTION_TRACK_H
+#define ACTION_TRACK_H
 
 #include "gameplay/viewmodel_pose.h"
 
-/* The reload, as a keyframe track rather than as code.
+/* A scripted viewmodel action, as a keyframe track rather than as code.
 
    Everything else the viewmodel does is a BLEND: hip to sprint to aim, three
    poses crossfaded on eased numbers, and that works because those are states
-   the player moves between and can be in halfway. A reload is not a state, it
-   is a sequence - the hand is on the handguard, then on the magazine, then
-   empty, then at the chest, then back - and a sequence wants keys and a clock,
-   not more nested lerps. Written as data so the timing can be moved without
-   touching a line of the code that plays it.
+   the player moves between and can be in halfway. An action is not a state, it
+   is a sequence - for a reload the hand is on the handguard, then on the
+   magazine, then empty, then at the chest, then back; for a draw it is at the
+   scabbard, then gripping, then out along the blade, then at the ready - and a
+   sequence wants keys and a clock, not more nested lerps. Written as data so
+   the timing can be moved without touching a line of the code that plays it.
 
-   One sequence for every weapon today, reached through an accessor for the same
-   reason the sprint carry is: see weapon_spec_reload_sequence. */
+   This was the reload's own type until a sword needed the same thing for its
+   draw and its sheathe. Nothing about keys, easing curves, frames of reference
+   or impact beats was ever about magazines; only the names were. The two
+   helpers below that ARE about a magazine kept theirs.
+
+   Reached through an accessor for the same reason the sprint carry is: see
+   weapon_spec_reload_sequence. */
 
 /* How the motion INTO a key is shaped.
 
@@ -35,38 +41,38 @@
 typedef enum {
     /* Constant rate. For a dwell between two keys at the same place, where
        there is no motion to shape. */
-    RELOAD_EASE_HOLD,
+    ACTION_EASE_HOLD,
     /* Constant rate again, and the same arithmetic, but it means the opposite
        thing: do NOT slow down here. For a key the hand is routed THROUGH rather
        than to - a waypoint on a curve, where easing in and out would put a stop
        in the middle of one continuous sweep. Named apart from HOLD because a
        reader has to be able to tell a dwell from a pass, and because the day
        either wants a different curve they must not both move. */
-    RELOAD_EASE_THROUGH,
+    ACTION_EASE_THROUGH,
     /* Smoothstep: away slowly, up to speed, and settling in. A hand crossing
        to somewhere and stopping there. The default. */
-    RELOAD_EASE_SMOOTH,
+    ACTION_EASE_SMOOTH,
     /* Off the mark hard and decelerating in. A magazine ripped clear, a hand
        coming off the floorplate - motions whose energy is at the START. */
-    RELOAD_EASE_SNAP,
+    ACTION_EASE_SNAP,
     /* Building and arriving hard, with no settle. Pressing the release, driving
        the magazine home, the tap that confirms it - motions that exist in order
        to hit something. */
-    RELOAD_EASE_DRIVE
+    ACTION_EASE_DRIVE
 } ReloadEase;
 
 typedef enum {
     /* The point is in the GUN's own model space and rides the live weapon
        transform, so a hand on the magazine follows the gun through its bob and
        its kick. Every point on the weapon is one of these. */
-    RELOAD_ON_GUN,
+    ACTION_ON_WEAPON,
     /* The point is in CAMERA space and belongs to the body, not the gun - the
        chest pouch, which stays where it is however the weapon moves. The
        distinction is the whole reason a frame is stated per key. */
-    RELOAD_IN_VIEW,
+    ACTION_IN_VIEW,
     /* The magazine only: carried, so it goes wherever the hand went. Saves
        stating the same travel twice and keeps the two from drifting apart. */
-    RELOAD_IN_HAND
+    ACTION_IN_HAND
 } ReloadFrame;
 
 typedef struct {
@@ -107,10 +113,10 @@ typedef struct {
        it a magazine goes in like a card into a slot, which is the other half of
        why the insertion read as machinery. */
     float mag_pitch;
-} ReloadKey;
+} ActionKey;
 
 typedef struct {
-    const ReloadKey* keys;
+    const ActionKey* keys;
     int count;
     /* Where in the reload the spent magazine stops being the viewmodel's and
        becomes the world's. Stated here rather than derived from the keys
@@ -131,7 +137,7 @@ typedef struct {
        time somebody moved one. */
     float seat_at;
     float tap_at;
-} ReloadSequence;
+} ActionTrack;
 
 /* The two keys either side of `progress`, and how far between them it is.
    Returns the pair rather than a resolved point because resolving needs the
@@ -139,13 +145,13 @@ typedef struct {
    and because the two consumers, the arms and the magazine, resolve different
    parts of the same key. Clamped at both ends. */
 typedef struct {
-    const ReloadKey* from;
-    const ReloadKey* to;
+    const ActionKey* from;
+    const ActionKey* to;
     float t;
-} ReloadSample;
+} ActionSample;
 
-void reload_sequence_sample(const ReloadSequence* sequence, float progress,
-                            ReloadSample* out);
+void action_track_sample(const ActionTrack* sequence, float progress,
+                            ActionSample* out);
 
 /* How much of the reload pose the gun is wearing at `progress`, 0 to 1: up at
    the start, held through the middle, back down at the end. Separate from the
@@ -168,6 +174,6 @@ float reload_sequence_gun_blend(float progress);
    separate collisions with a gap between them, and that gap is the beat that
    makes the second one read as a confirmation of the first rather than as part
    of the same push. */
-float reload_sequence_seat_jolt(const ReloadSequence* sequence, float progress);
+float reload_sequence_seat_jolt(const ActionTrack* sequence, float progress);
 
 #endif

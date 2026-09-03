@@ -544,7 +544,7 @@ static void draw_body_rifle(void) {
    whole, which is every frame outside a reload. */
 static const char* const* magazine_split(const Weapon* weapon,
                                          const char* hide[3],
-                                         ReloadSample* sample) {
+                                         ActionSample* sample) {
     const WeaponSpec* spec = weapon->spec;
     const FirearmSpec* firearm = weapon_spec_firearm(spec);
     /* No gun half is no magazine, and the null test has to come first: a sword
@@ -552,12 +552,12 @@ static const char* const* magazine_split(const Weapon* weapon,
        the order that dereferences before it checks. */
     if (!firearm || weapon_reload_blend(weapon) <= 0.0f ||
         !firearm->magazine_part) return NULL;
-    reload_sequence_sample(weapon_spec_reload_sequence(spec),
+    action_track_sample(weapon_spec_reload_sequence(spec),
                            weapon->reload, sample);
     /* Seated at BOTH ends of the span is the only case where the magazine is
        still the gun's own - anything else and it has started to move. */
-    if (sample->from->mag_frame == RELOAD_ON_GUN &&
-        sample->to->mag_frame == RELOAD_ON_GUN &&
+    if (sample->from->mag_frame == ACTION_ON_WEAPON &&
+        sample->to->mag_frame == ACTION_ON_WEAPON &&
         sample->from->mag[1] == 0.0f && sample->to->mag[1] == 0.0f &&
         sample->from->drawn && sample->to->drawn)
         return NULL;
@@ -576,13 +576,13 @@ static void draw_loose_magazine(const Weapon* weapon, const Mat4* gun) {
     const WeaponSpec* spec = weapon->spec;
     const FirearmSpec* firearm = weapon_spec_firearm(spec);
     const char* hide[3];
-    ReloadSample sample;
+    ActionSample sample;
     /* The same question draw_receiver asked, asked again rather than passed
        down: if the gun is still wearing its magazine there is nothing loose to
        draw, and the two answers come from one function so they cannot differ. */
     if (!magazine_split(weapon, hide, &sample)) return;
-    const ReloadKey* from = sample.from;
-    const ReloadKey* to = sample.to;
+    const ActionKey* from = sample.from;
+    const ActionKey* to = sample.to;
     /* The hand is empty for one beat of the track, and that beat is the point
        of the whole animation - it is the only frame that says a magazine was
        CHANGED rather than refilled where it sat.
@@ -598,10 +598,10 @@ static void draw_loose_magazine(const Weapon* weapon, const Mat4* gun) {
        one as well would put two on screen. The track keeps describing it past
        this point only so the handoff has somewhere to hand off FROM. */
     {
-        const ReloadSequence* track = weapon_spec_reload_sequence(spec);
+        const ActionTrack* track = weapon_spec_reload_sequence(spec);
         if (weapon->reload >= track->drop_at &&
-            from->mag_frame != RELOAD_IN_HAND &&
-            to->mag_frame != RELOAD_IN_HAND)
+            from->mag_frame != ACTION_IN_HAND &&
+            to->mag_frame != ACTION_IN_HAND)
             return;
     }
 
@@ -628,9 +628,9 @@ static void draw_loose_magazine(const Weapon* weapon, const Mat4* gun) {
        resolved before it is blended, since a key on the gun and a key in the
        hand are not in the same frame and the raw numbers do not interpolate. */
     float ends[2][3];
-    const ReloadKey* key[2] = {from, to};
+    const ActionKey* key[2] = {from, to};
     for (int e = 0; e < 2; ++e) {
-        if (key[e]->mag_frame == RELOAD_IN_HAND) {
+        if (key[e]->mag_frame == ACTION_IN_HAND) {
             /* Carried: wherever the support hand is, offset so the magazine
                hangs below the fist rather than through it. Asked of the arms so
                the two cannot drift. */
@@ -691,7 +691,7 @@ static void draw_receiver(const Weapon* weapon) {
        its own; the boxes stand in for whichever gun has no mesh yet. */
     const FirearmSpec* firearm = weapon_spec_firearm(weapon->spec);
     const char* hide[3];
-    ReloadSample sample;
+    ActionSample sample;
     const char* const* without = magazine_split(weapon, hide, &sample);
     const char* const* hidden = without ? without : weapon->spec->hidden_parts;
     /* The iron sights come off either way. When the magazine also has to, the

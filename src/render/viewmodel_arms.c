@@ -485,9 +485,9 @@ static void pose_targets(const WeaponSpec* spec, float sprint, float reload,
    which is the whole reason a key states its frame - the pouch stays on the
    body while the weapon moves, and every other point on the track does the
    opposite. */
-static void key_hand(const ReloadKey* key, const ViewmodelPose* gun,
+static void key_hand(const ActionKey* key, const ViewmodelPose* gun,
                      float out[3]) {
-    if (key->hand_frame == RELOAD_IN_VIEW) {
+    if (key->hand_frame == ACTION_IN_VIEW) {
         for (int c = 0; c < 3; ++c) out[c] = key->hand[c];
         return;
     }
@@ -497,8 +497,8 @@ static void key_hand(const ReloadKey* key, const ViewmodelPose* gun,
 /* The same, against the live weapon transform rather than a resting pose. Two
    functions rather than one because the solve works in poses and the draw works
    in matrices, and neither should have to build the other's. */
-static void key_hand_live(const ReloadKey* key, const Mat4* gun, float out[3]) {
-    if (key->hand_frame == RELOAD_IN_VIEW) {
+static void key_hand_live(const ActionKey* key, const Mat4* gun, float out[3]) {
+    if (key->hand_frame == ACTION_IN_VIEW) {
         for (int c = 0; c < 3; ++c) out[c] = key->hand[c];
         return;
     }
@@ -539,9 +539,9 @@ static void reload_support_direction(const WeaponSpec* spec,
     *wrist_roll = 0.0f;
     if (blend->reload <= 0.0f) return;
 
-    const ReloadSequence* track = weapon_spec_reload_sequence(spec);
-    ReloadSample sample;
-    reload_sequence_sample(track, blend->reload_progress, &sample);
+    const ActionTrack* track = weapon_spec_reload_sequence(spec);
+    ActionSample sample;
+    action_track_sample(track, blend->reload_progress, &sample);
     float progress = blend->reload_progress;
 
     /* Across the magazine rather than along the handguard. Pitch and roll are
@@ -653,7 +653,7 @@ static void solve_for_weapon(const WeaponSpec* spec) {
        Solved against the RESTING reload pose rather than the live matrix, for
        the reason pose_targets gives: a stance calibrated mid-bob bakes one
        frame's wobble into itself. */
-    const ReloadSequence* track = weapon_spec_reload_sequence(spec);
+    const ActionTrack* track = weapon_spec_reload_sequence(spec);
     ViewmodelPose held;
     weapon_spec_rest_pose(spec, 0.0f, 1.0f, 0.0f, &held);
     g_arms.reload_count = track->count < ARMS_MAX_RELOAD_KEYS
@@ -857,9 +857,9 @@ static void shoulder_anchor(const WeaponSpec* spec, const ViewmodelBlend* blend,
        where the previous waypoint wanted them and the hand where the next one
        does, and fold the arm between the two. */
     if (blend->reload > 0.0f && g_arms.reload_count > 0) {
-        const ReloadSequence* track = weapon_spec_reload_sequence(spec);
-        ReloadSample sample;
-        reload_sequence_sample(track, blend->reload_progress, &sample);
+        const ActionTrack* track = weapon_spec_reload_sequence(spec);
+        ActionSample sample;
+        action_track_sample(track, blend->reload_progress, &sample);
         int from = (int)(sample.from - track->keys);
         int to = (int)(sample.to - track->keys);
         if (from >= g_arms.reload_count) from = g_arms.reload_count - 1;
@@ -1122,9 +1122,9 @@ void viewmodel_arms_support_target(const WeaponSpec* spec,
     mat4_transform_point(gun, spec->grip_left, out);
     if (blend->reload <= 0.0f) return;
 
-    const ReloadSequence* track = weapon_spec_reload_sequence(spec);
-    ReloadSample sample;
-    reload_sequence_sample(track, blend->reload_progress, &sample);
+    const ActionTrack* track = weapon_spec_reload_sequence(spec);
+    ActionSample sample;
+    action_track_sample(track, blend->reload_progress, &sample);
 
     /* Both keys resolved into camera space BEFORE they are blended, because
        they may not be in the same space: a key on the magazine is on the gun

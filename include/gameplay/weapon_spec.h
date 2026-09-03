@@ -3,7 +3,7 @@
 
 #include "gameplay/sight_spec.h"
 #include "gameplay/viewmodel_pose.h"
-#include "gameplay/reload_sequence.h"
+#include "gameplay/action_track.h"
 
 /* Everything that makes one gun feel different from another, as data. The
    weapon code holds a pointer to one of these and reads it; it has no numbers
@@ -354,7 +354,7 @@ const ViewmodelPose* weapon_spec_sprint_pose(const WeaponSpec* spec);
    The pose is anchored at the firing grip, so a shorter gun is held at the same
    place by the same hand rather than hanging off the same origin. */
 const ViewmodelPose* weapon_spec_reload_pose(const WeaponSpec* spec);
-const ReloadSequence* weapon_spec_reload_sequence(const WeaponSpec* spec);
+const ActionTrack* weapon_spec_reload_sequence(const WeaponSpec* spec);
 
 /* Where the support hand closes on the magazine, in the gun's own space. The
    track states it too; this is for the code that needs to know the hand is ON

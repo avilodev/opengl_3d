@@ -34,7 +34,7 @@ PROBE_SRCS := tools/viewmodel_probe.c src/render/arm_placement.c \
               src/render/skinned_model_glb.c src/render/skinned_pose.c \
               src/render/glb.c src/render/stb_image.c src/core/json.c \
               src/gameplay/weapon.c src/gameplay/traversal.c src/gameplay/arena.c \
-              src/gameplay/reload_sequence.c src/gameplay/combatant.c \
+              src/gameplay/action_track.c src/gameplay/combatant.c \
               src/gameplay/damage_number.c src/gameplay/third_person_camera.c
 
 # The character rig's arithmetic, checked the same way and for the same reason
@@ -80,7 +80,7 @@ DEATH_PROBE_SRCS := tools/death_probe.c src/gameplay/combatant.c \
 SPEC_PROBE := bin/weapon_spec_probe
 SPEC_PROBE_SRCS := tools/weapon_spec_probe.c src/gameplay/weapon_spec.c \
               src/gameplay/weapon_specs.c src/gameplay/viewmodel_pose.c \
-              src/gameplay/reload_sequence.c src/gameplay/sights.c \
+              src/gameplay/action_track.c src/gameplay/sights.c \
               src/render/static_model_glb.c src/render/glb.c \
               src/render/stb_image.c src/core/json.c
 

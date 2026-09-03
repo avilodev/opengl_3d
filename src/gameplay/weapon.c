@@ -1,7 +1,7 @@
 #include "gameplay/weapon.h"
 #include "gameplay/weapon_spec.h"
 #include "gameplay/weapon_tuning.h"
-#include "gameplay/reload_sequence.h"
+#include "gameplay/action_track.h"
 #include "gameplay/movement_tuning.h"
 #include "gameplay/traversal.h"
 #include "gameplay/arena.h"
@@ -518,9 +518,9 @@ static void drop_magazine(Weapon* weapon, const PlayerController* player,
        real one starts exactly where the drawn one stopped. */
     ViewmodelPose pose;
     weapon_viewmodel_pose(weapon, player, &pose);
-    const ReloadSequence* track = weapon_spec_reload_sequence(weapon->spec);
-    ReloadSample sample;
-    reload_sequence_sample(track, track->drop_at, &sample);
+    const ActionTrack* track = weapon_spec_reload_sequence(weapon->spec);
+    ActionSample sample;
+    action_track_sample(track, track->drop_at, &sample);
     float local[3];
     for (int c = 0; c < 3; ++c)
         local[c] = lerpf(sample.from->mag[c], sample.to->mag[c], sample.t);
@@ -793,7 +793,7 @@ void weapon_update(Weapon* weapon, const WeaponCommand* command,
        however slow the reload is - a test of the form "past the drop point"
        would spawn one every frame from here to the end of the animation. */
     {
-        const ReloadSequence* track = weapon_spec_reload_sequence(weapon->spec);
+        const ActionTrack* track = weapon_spec_reload_sequence(weapon->spec);
         if (weapon->reload >= track->drop_at && was_reloading < track->drop_at &&
             gun && gun->magazine_part)
             drop_magazine(weapon, player, aim_yaw_degrees, aim_pitch_degrees,

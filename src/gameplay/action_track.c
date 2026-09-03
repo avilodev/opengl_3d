@@ -1,4 +1,4 @@
-#include "gameplay/reload_sequence.h"
+#include "gameplay/action_track.h"
 #include "utils/math_utils.h"
 
 #include <math.h>
@@ -13,9 +13,9 @@
    magazine in it to be at three different points along the same segment. */
 static float ease(ReloadEase shape, float t) {
     switch (shape) {
-    case RELOAD_EASE_SMOOTH:
+    case ACTION_EASE_SMOOTH:
         return t * t * (3.0f - 2.0f * t);
-    case RELOAD_EASE_SNAP:
+    case ACTION_EASE_SNAP:
         /* Cubic out. Most of the distance is covered in the first third, which
            is what a strip is: the release lets go and the arm is already
            moving. */
@@ -23,14 +23,14 @@ static float ease(ReloadEase shape, float t) {
             float remaining = 1.0f - t;
             return 1.0f - remaining * remaining * remaining;
         }
-    case RELOAD_EASE_DRIVE:
+    case ACTION_EASE_DRIVE:
         /* Quadratic in - fastest at the end, so the motion arrives rather than
            settles. Squared and not cubed: a hand driving a magazine home starts
            from a hand that is already carrying it, so there is momentum in it
            from the first frame. */
         return t * t;
-    case RELOAD_EASE_HOLD:
-    case RELOAD_EASE_THROUGH:
+    case ACTION_EASE_HOLD:
+    case ACTION_EASE_THROUGH:
     default:
         return t;
     }
@@ -38,9 +38,9 @@ static float ease(ReloadEase shape, float t) {
 
 /* Sampling is a scan from the front. The track is a dozen keys read once a
    frame, so anything cleverer would cost more to write than it saves. */
-void reload_sequence_sample(const ReloadSequence* sequence, float progress,
-                            ReloadSample* out) {
-    const ReloadKey* keys = sequence->keys;
+void action_track_sample(const ActionTrack* sequence, float progress,
+                            ActionSample* out) {
+    const ActionKey* keys = sequence->keys;
     int count = sequence->count;
 
     if (progress <= keys[0].at) {
@@ -84,7 +84,7 @@ static float spike(float progress, float at) {
     return remaining * remaining;
 }
 
-float reload_sequence_seat_jolt(const ReloadSequence* sequence, float progress) {
+float reload_sequence_seat_jolt(const ActionTrack* sequence, float progress) {
     /* The larger of the two rather than their sum. They do not overlap at the
        timings any sane track states, and if a track ever puts them close enough
        to, two knocks adding into one twice as large is not what a tap closer to

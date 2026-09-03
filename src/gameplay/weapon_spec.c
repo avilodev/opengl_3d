@@ -166,57 +166,57 @@ static const float RELOAD_MAG_GRIP[3] = {0.0f, -0.150f, -0.127f};
                      -WEAPON_VIEW_POUCH_VIA2_DOWN, \
                      -WEAPON_VIEW_POUCH_VIA2_FORWARD
 
-static const ReloadKey RELOAD_KEYS[] = {
+static const ActionKey RELOAD_KEYS[] = {
     /*  at   ease                 hand frame       hand                        drawn loaded  mag frame      mag                    roll  pitch */
-    { 0.00f, RELOAD_EASE_HOLD,    RELOAD_ON_GUN,   { 0.000f, -0.060f, -0.330f },  1, 1, RELOAD_ON_GUN,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
+    { 0.00f, ACTION_EASE_HOLD,    ACTION_ON_WEAPON,   { 0.000f, -0.060f, -0.330f },  1, 1, ACTION_ON_WEAPON,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
     /* The gun swinging in. The hand has not moved yet - it is still on the
        handguard, going where the weapon goes. */
-    { 0.10f, RELOAD_EASE_HOLD,    RELOAD_ON_GUN,   { 0.000f, -0.060f, -0.330f },  1, 1, RELOAD_ON_GUN,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
+    { 0.10f, ACTION_EASE_HOLD,    ACTION_ON_WEAPON,   { 0.000f, -0.060f, -0.330f },  1, 1, ACTION_ON_WEAPON,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
     /* The hand arrives on the magazine before anything moves, and settles onto
        it rather than stopping dead on it. */
-    { 0.24f, RELOAD_EASE_SMOOTH,  RELOAD_ON_GUN,   { 0.000f, -0.150f, -0.127f },  1, 1, RELOAD_ON_GUN,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
+    { 0.24f, ACTION_EASE_SMOOTH,  ACTION_ON_WEAPON,   { 0.000f, -0.150f, -0.127f },  1, 1, ACTION_ON_WEAPON,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
     /* The release, pressed. A short hard push that ends in a click, so it
        DRIVES - and the magazine is already a couple of centimetres out of the
        well by the end of it, because that is what a released magazine does
        under its own weight before the hand has done anything. */
-    { 0.29f, RELOAD_EASE_DRIVE,   RELOAD_ON_GUN,   { 0.000f, -0.178f, -0.127f },  1, 0, RELOAD_ON_GUN,   { 0.0f, -0.028f, 0.00f },  0.0f,  0.0f },
+    { 0.29f, ACTION_EASE_DRIVE,   ACTION_ON_WEAPON,   { 0.000f, -0.178f, -0.127f },  1, 0, ACTION_ON_WEAPON,   { 0.0f, -0.028f, 0.00f },  0.0f,  0.0f },
     /* Ripped clear, straight down the well before it is let go - a magazine
        that started tumbling inside the receiver would be wrong. Fast off the
        mark and slowing as it comes free, which is the shape of a pull. */
-    { 0.34f, RELOAD_EASE_SNAP,    RELOAD_ON_GUN,   { 0.000f, -0.268f, -0.127f },  1, 0, RELOAD_ON_GUN,   { 0.0f, -0.118f, 0.00f },  4.0f,  2.0f },
+    { 0.34f, ACTION_EASE_SNAP,    ACTION_ON_WEAPON,   { 0.000f, -0.268f, -0.127f },  1, 0, ACTION_ON_WEAPON,   { 0.0f, -0.118f, 0.00f },  4.0f,  2.0f },
     /* Let go, and the hand starts down the arc for the belt. The magazine keeps
        falling on its own, which is what makes it read as dropped rather than
        put down. Both waypoints are PASSED THROUGH: this is one sweep, and a
        hand that stopped twice on the way down would be worse than the fold the
        waypoints exist to avoid. */
-    { 0.40f, RELOAD_EASE_SMOOTH,  RELOAD_IN_VIEW,  { POUCH_VIA1 },                1, 0, RELOAD_ON_GUN,   { 0.0f, -0.26f,  0.02f }, 11.0f,  6.0f },
-    { 0.46f, RELOAD_EASE_THROUGH, RELOAD_IN_VIEW,  { POUCH_VIA2 },                1, 0, RELOAD_ON_GUN,   { 0.0f, -0.42f,  0.03f }, 18.0f, 10.0f },
+    { 0.40f, ACTION_EASE_SMOOTH,  ACTION_IN_VIEW,  { POUCH_VIA1 },                1, 0, ACTION_ON_WEAPON,   { 0.0f, -0.26f,  0.02f }, 11.0f,  6.0f },
+    { 0.46f, ACTION_EASE_THROUGH, ACTION_IN_VIEW,  { POUCH_VIA2 },                1, 0, ACTION_ON_WEAPON,   { 0.0f, -0.42f,  0.03f }, 18.0f, 10.0f },
     /* Down into the pouch, empty. One key, and the whole point of the track. */
-    { 0.51f, RELOAD_EASE_SMOOTH,  RELOAD_IN_VIEW,  { POUCH_INSIDE },              0, 0, RELOAD_ON_GUN,   { 0.0f, -0.58f,  0.04f }, 24.0f, 14.0f },
+    { 0.51f, ACTION_EASE_SMOOTH,  ACTION_IN_VIEW,  { POUCH_INSIDE },              0, 0, ACTION_ON_WEAPON,   { 0.0f, -0.58f,  0.04f }, 24.0f, 14.0f },
     /* Up out of it with a fresh one. The rise is what says the magazine was
        drawn from somewhere rather than appearing in the fist. */
-    { 0.58f, RELOAD_EASE_SMOOTH,  RELOAD_IN_VIEW,  { POUCH_DRAWN },               1, 1, RELOAD_IN_HAND,  { 0.0f,  0.00f,  0.00f },  0.0f,-16.0f },
+    { 0.58f, ACTION_EASE_SMOOTH,  ACTION_IN_VIEW,  { POUCH_DRAWN },               1, 1, ACTION_IN_HAND,  { 0.0f,  0.00f,  0.00f },  0.0f,-16.0f },
     /* And back up the same arc, carrying it. */
-    { 0.64f, RELOAD_EASE_SMOOTH,  RELOAD_IN_VIEW,  { POUCH_VIA2 },                1, 1, RELOAD_IN_HAND,  { 0.0f,  0.00f,  0.00f },  0.0f,-15.0f },
-    { 0.70f, RELOAD_EASE_THROUGH, RELOAD_IN_VIEW,  { POUCH_VIA1 },                1, 1, RELOAD_IN_HAND,  { 0.0f,  0.00f,  0.00f },  0.0f,-13.0f },
+    { 0.64f, ACTION_EASE_SMOOTH,  ACTION_IN_VIEW,  { POUCH_VIA2 },                1, 1, ACTION_IN_HAND,  { 0.0f,  0.00f,  0.00f },  0.0f,-15.0f },
+    { 0.70f, ACTION_EASE_THROUGH, ACTION_IN_VIEW,  { POUCH_VIA1 },                1, 1, ACTION_IN_HAND,  { 0.0f,  0.00f,  0.00f },  0.0f,-13.0f },
     /* Offered up to the mouth of the well, bottom rocked back toward the
        shooter - the angle a wrist actually presents a curved magazine at, front
        lip in first. The hand arrives short of seated, not at it. */
-    { 0.76f, RELOAD_EASE_SMOOTH,  RELOAD_ON_GUN,   { 0.000f, -0.245f, -0.140f },  1, 1, RELOAD_IN_HAND,  { 0.0f,  0.00f,  0.00f },  0.0f,-11.0f },
+    { 0.76f, ACTION_EASE_SMOOTH,  ACTION_ON_WEAPON,   { 0.000f, -0.245f, -0.140f },  1, 1, ACTION_IN_HAND,  { 0.0f,  0.00f,  0.00f },  0.0f,-11.0f },
     /* Rocked straight and DRIVEN home. This is the seat: the jolt fires here,
        and the ease is what makes it an arrival rather than a slide. */
-    { 0.83f, RELOAD_EASE_DRIVE,   RELOAD_ON_GUN,   { 0.000f, -0.150f, -0.127f },  1, 1, RELOAD_ON_GUN,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
+    { 0.83f, ACTION_EASE_DRIVE,   ACTION_ON_WEAPON,   { 0.000f, -0.150f, -0.127f },  1, 1, ACTION_ON_WEAPON,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
     /* Off the floorplate. A short flick down to make room for the tap, and it
        leaves fast because the hand is bouncing off what it just hit. */
-    { 0.87f, RELOAD_EASE_SNAP,    RELOAD_ON_GUN,   { 0.000f, -0.272f, -0.124f },  1, 1, RELOAD_ON_GUN,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
+    { 0.87f, ACTION_EASE_SNAP,    ACTION_ON_WEAPON,   { 0.000f, -0.272f, -0.124f },  1, 1, ACTION_ON_WEAPON,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
     /* The tap. Up into the base of the magazine, hard, and the second jolt
        fires here. */
-    { 0.92f, RELOAD_EASE_DRIVE,   RELOAD_ON_GUN,   { 0.000f, -0.235f, -0.124f },  1, 1, RELOAD_ON_GUN,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
+    { 0.92f, ACTION_EASE_DRIVE,   ACTION_ON_WEAPON,   { 0.000f, -0.235f, -0.124f },  1, 1, ACTION_ON_WEAPON,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
     /* Held against it for a beat. Confirmed - which is the only thing this key
        is for, and without it the tap reads as a twitch. */
-    { 0.95f, RELOAD_EASE_HOLD,    RELOAD_ON_GUN,   { 0.000f, -0.235f, -0.124f },  1, 1, RELOAD_ON_GUN,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
+    { 0.95f, ACTION_EASE_HOLD,    ACTION_ON_WEAPON,   { 0.000f, -0.235f, -0.124f },  1, 1, ACTION_ON_WEAPON,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
     /* And back to the handguard as the gun goes out. */
-    { 1.00f, RELOAD_EASE_SMOOTH,  RELOAD_ON_GUN,   { 0.000f, -0.060f, -0.330f },  1, 1, RELOAD_ON_GUN,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
+    { 1.00f, ACTION_EASE_SMOOTH,  ACTION_ON_WEAPON,   { 0.000f, -0.060f, -0.330f },  1, 1, ACTION_ON_WEAPON,   { 0.0f,  0.00f,  0.00f },  0.0f,  0.0f },
 };
 
 /* The handoff at 0.485 is the midpoint between the last key that draws a
@@ -226,12 +226,12 @@ static const ReloadKey RELOAD_KEYS[] = {
 
    The seat and the tap are the two keys the gun's own jolt fires on, named here
    rather than found by looking for keys that resemble arrivals. */
-static const ReloadSequence RELOAD_SEQUENCE = {
+static const ActionTrack RELOAD_SEQUENCE = {
     RELOAD_KEYS, (int)(sizeof RELOAD_KEYS / sizeof RELOAD_KEYS[0]),
     0.485f, 0.83f, 0.92f
 };
 
-const ReloadSequence* weapon_spec_reload_sequence(const WeaponSpec* spec) {
+const ActionTrack* weapon_spec_reload_sequence(const WeaponSpec* spec) {
     (void)spec;
     return &RELOAD_SEQUENCE;
 }

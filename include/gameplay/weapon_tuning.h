@@ -186,7 +186,7 @@
 /* Where the spare magazines are carried, in camera space: right of the eye,
    below it, forward of it. The one point in a reload that belongs to the BODY
    rather than to the gun, which is why it is stated here in the camera's own
-   axes and why the reload track marks those keys RELOAD_IN_VIEW.
+   axes and why the reload track marks those keys ACTION_IN_VIEW.
 
    Below the eye is the number that matters and it was wrong. It used to be
    0.14, which is not a chest - it is under the chin, eighteen centimetres ABOVE

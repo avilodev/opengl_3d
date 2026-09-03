@@ -17,7 +17,7 @@
 #include "gameplay/combat_tuning.h"
 #include "gameplay/third_person_camera.h"
 #include "gameplay/traversal.h"
-#include "gameplay/reload_sequence.h"
+#include "gameplay/action_track.h"
 #include "gameplay/weapon_spec.h"
 #include "gameplay/weapon_tuning.h"
 #include "gameplay/movement_tuning.h"
@@ -408,7 +408,7 @@ static void check_gait(const WeaponSpec* spec) {
 static void check_reload(const WeaponSpec* spec, const ArmRig* rig) {
     printf("\n6. the reload track against the real rig (%s)\n", spec->name);
 
-    const ReloadSequence* track = weapon_spec_reload_sequence(spec);
+    const ActionTrack* track = weapon_spec_reload_sequence(spec);
     ViewmodelPose held;
     weapon_spec_rest_pose(spec, 0.0f, 1.0f, 0.0f, &held);
 
@@ -418,11 +418,11 @@ static void check_reload(const WeaponSpec* spec, const ArmRig* rig) {
     printf("   key   at    hand              placement        firing  support"
            "  screen\n");
     for (int i = 0; i < count; ++i) {
-        const ReloadKey* key = &track->keys[i];
+        const ActionKey* key = &track->keys[i];
         float targets[2][3], grip[2][3];
         /* The firing hand never leaves the pistol grip through a reload. */
         viewmodel_pose_transform_point(&held, spec->grip_right, grip[0]);
-        if (key->hand_frame == RELOAD_IN_VIEW)
+        if (key->hand_frame == ACTION_IN_VIEW)
             for (int c = 0; c < 3; ++c) grip[1][c] = key->hand[c];
         else
             viewmodel_pose_transform_point(&held, key->hand, grip[1]);
@@ -454,7 +454,7 @@ static void check_reload(const WeaponSpec* spec, const ArmRig* rig) {
         printf("   %2d  %.2f   %-16s  z %+.2f blade %2.0f   %.2f    %.2f  "
                "%+.2f  %s\n",
                i, key->at,
-               key->hand_frame == RELOAD_IN_VIEW ? "on the body" : "on the gun",
+               key->hand_frame == ACTION_IN_VIEW ? "on the body" : "on the gun",
                solved[i].z, solved[i].blade, f, sp, screen,
                ok ? "ok" : "OUT OF BAND");
     }
@@ -466,8 +466,8 @@ static void check_reload(const WeaponSpec* spec, const ArmRig* rig) {
     float worst_at = 0.0f;
     for (int step = 0; step <= 200; ++step) {
         float progress = (float)step / 200.0f;
-        ReloadSample sample;
-        reload_sequence_sample(track, progress, &sample);
+        ActionSample sample;
+        action_track_sample(track, progress, &sample);
         int from = (int)(sample.from - track->keys);
         int to = (int)(sample.to - track->keys);
         if (from >= count) from = count - 1;
@@ -480,9 +480,9 @@ static void check_reload(const WeaponSpec* spec, const ArmRig* rig) {
            exactly as the renderer does it, because keys on the gun and keys on
            the body are not in the same frame. */
         float ends[2][3];
-        const ReloadKey* key[2] = {sample.from, sample.to};
+        const ActionKey* key[2] = {sample.from, sample.to};
         for (int e = 0; e < 2; ++e) {
-            if (key[e]->hand_frame == RELOAD_IN_VIEW)
+            if (key[e]->hand_frame == ACTION_IN_VIEW)
                 for (int c = 0; c < 3; ++c) ends[e][c] = key[e]->hand[c];
             else
                 viewmodel_pose_transform_point(&held, key[e]->hand, ends[e]);
@@ -510,7 +510,7 @@ static void check_reload(const WeaponSpec* spec, const ArmRig* rig) {
     int empty = 0, off_gun = 0;
     for (int i = 0; i < count; ++i) {
         if (!track->keys[i].drawn) ++empty;
-        if (track->keys[i].hand_frame == RELOAD_IN_VIEW) ++off_gun;
+        if (track->keys[i].hand_frame == ACTION_IN_VIEW) ++off_gun;
     }
     if (!empty) ++failures;
     printf("   %s the hand is empty for %d key(s) - a magazine is changed, "
@@ -1140,15 +1140,15 @@ static void check_reload_shape(const WeaponSpec* spec) {
     printf("\n13. the reload is paced like a person doing it (%s)\n",
            spec->name);
 
-    const ReloadSequence* track = weapon_spec_reload_sequence(spec);
+    const ActionTrack* track = weapon_spec_reload_sequence(spec);
     const float* grip = weapon_spec_mag_grip(spec);
 
     /* Found by what they ARE and not by index, so re-ordering or inserting a
        key cannot quietly turn these checks off. */
     int touched = -1, empty = -1;
     for (int i = 0; i < track->count; ++i) {
-        const ReloadKey* key = &track->keys[i];
-        if (touched < 0 && key->hand_frame == RELOAD_ON_GUN &&
+        const ActionKey* key = &track->keys[i];
+        if (touched < 0 && key->hand_frame == ACTION_ON_WEAPON &&
             fabsf(key->hand[1] - grip[1]) < 1e-4f &&
             fabsf(key->hand[2] - grip[2]) < 1e-4f) touched = i;
         if (!key->drawn) empty = i;
@@ -1178,8 +1178,8 @@ static void check_reload_shape(const WeaponSpec* spec) {
     for (int step = 0; step <= 200; ++step) {
         float progress = track->seat_at +
             (track->tap_at - track->seat_at) * (float)step / 200.0f;
-        ReloadSample sample;
-        reload_sequence_sample(track, progress, &sample);
+        ActionSample sample;
+        action_track_sample(track, progress, &sample);
         /* Along the well, in the gun's own space - which is where the hand is
            stated, so no transform is needed to compare two of them. */
         float y = lerpf(sample.from->hand[1], sample.to->hand[1], sample.t);
@@ -1230,11 +1230,11 @@ static void check_reload_shape(const WeaponSpec* spec) {
     viewmodel_pose_transform_point(&reload_pose, weapon_spec_mag_grip(spec),
                                    well);
     float well_screen = (well[1] / -well[2]) / tangent;
-    const ReloadKey* pouch = &track->keys[empty];
+    const ActionKey* pouch = &track->keys[empty];
     float pouch_screen = (pouch->hand[1] / -pouch->hand[2]) / tangent;
     printf("   on screen, as a fraction of half the viewport: the well %+.2f, "
            "the pouch %+.2f\n", well_screen, pouch_screen);
-    expect(pouch->hand_frame == RELOAD_IN_VIEW,
+    expect(pouch->hand_frame == ACTION_IN_VIEW,
            "the pouch is on the body and not on the weapon");
     expect(well_screen > -1.0f, "the magazine well is in frame");
     expect(pouch_screen < -1.5f, "and the pouch is well below it, out of frame");
@@ -1258,12 +1258,12 @@ static void check_reload_shape(const WeaponSpec* spec) {
     float previous_hand[3] = {0.0f, 0.0f, 0.0f};
     for (int step = 0; step <= steps; ++step) {
         float progress = (float)step / (float)steps;
-        ReloadSample sample;
-        reload_sequence_sample(track, progress, &sample);
+        ActionSample sample;
+        action_track_sample(track, progress, &sample);
         float ends[2][3];
-        const ReloadKey* key[2] = {sample.from, sample.to};
+        const ActionKey* key[2] = {sample.from, sample.to};
         for (int e = 0; e < 2; ++e) {
-            if (key[e]->hand_frame == RELOAD_IN_VIEW)
+            if (key[e]->hand_frame == ACTION_IN_VIEW)
                 for (int c = 0; c < 3; ++c) ends[e][c] = key[e]->hand[c];
             else
                 viewmodel_pose_transform_point(&held, key[e]->hand, ends[e]);
