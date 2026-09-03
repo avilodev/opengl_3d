@@ -51,6 +51,21 @@ Mat4 character_body_transform(const CharacterInstance* instance,
 
    Its origin is the koiguchi, the mouth, which is where the blade enters and
    leaves. Everything about a draw is measured from that one point. */
+/* The held weapon's whole transform in WORLD space: the body, then the hand,
+   then the weapon in it. What character_weapon_muzzle takes a point off, handed
+   back as a matrix instead - because a blade is a segment rather than a point,
+   and a swing needs the transform itself to sweep with.
+
+   The body's hand and not the viewmodel's, in both views. The viewmodel is
+   drawn through a projection of its own and a camera-space offset put straight
+   into the world lands about half as far from the middle of the screen as the
+   thing it came from, which is a correction a tracer has to make and a hit
+   test should not have to. The body's hand is already in world units, and it
+   is in the same place whether or not anybody is drawing it. */
+int character_weapon_world(const SkinnedModel* model,
+                           const CharacterInstance* instance,
+                           const CharacterVisualState* state, Mat4* out);
+
 int character_scabbard_transform(const SkinnedModel* model, const Pose* pose,
                                  const MeleeSpec* melee, Mat4* out);
 

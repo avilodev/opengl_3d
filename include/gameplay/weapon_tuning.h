@@ -312,4 +312,16 @@
 #define WEAPON_VIEW_SPRINT_ROCK 3.5f
 #define WEAPON_VIEW_SPRINT_NOD 1.6f
 
+/* How long one swing owns the weapon.
+
+   Seconds and not the clip's own duration, because the clip's duration is
+   whatever the library's animator felt like and the window fractions on
+   MeleeAttack are stated against this. Short enough that a chain of three
+   reads as a chain rather than as three separate decisions.
+
+   The block instead runs until the player lets go, so its "duration" is only
+   long enough that the clock never expires underneath a held button. */
+#define MELEE_ATTACK_SECONDS 0.55f
+#define MELEE_BLOCK_HOLD 3600.0f
+
 #endif

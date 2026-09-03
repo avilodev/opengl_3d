@@ -26,4 +26,13 @@ void commands_decode(const ActionState* actions,
     weapon->fire_held = action_held(actions, ACTION_FIRE);
     weapon->aim_held = action_held(actions, ACTION_AIM);
     weapon->reload_pressed = action_pressed(actions, ACTION_RELOAD);
+    /* The same two buttons the gun uses. A press rather than the held state,
+       because a swing is a decision and a held trigger is not three of them -
+       the chain advances on inputs, and auto-swinging would make the combo
+       something that happens TO the player rather than something they do. */
+    weapon->attack_pressed = action_pressed(actions, ACTION_FIRE);
+    weapon->block_held = action_held(actions, ACTION_AIM);
+    /* Heavy is attack with block held: a commitment made with both buttons,
+       which is what stops it from being the one anybody spams. */
+    weapon->heavy_pressed = weapon->attack_pressed && weapon->block_held;
 }

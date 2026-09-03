@@ -387,6 +387,106 @@ void weapon_sight_center(const Weapon* weapon, const PlayerController* player,
    starts at the barrel, which is what stops a shot from looking like it came
    out of the player's forehead - or, while scoped, out of thin air a foot to
    the right of a gun the player can plainly see is centred. */
+/* The combo, which is the attack table read as a graph.
+
+   There is no state machine here beyond "which attack is running", because the
+   table already says where each one goes: an input inside the live window
+   advances to attack->next, an input outside it starts over, and next == -1 is
+   the end of the chain. Writing that as a separate machine would be the same
+   information twice, and the second copy is the one that goes stale when
+   somebody retunes a window. */
+/* Whether the blade is live right now. A block states its window backwards,
+   which is what says it has none at all rather than a zero-length one at the
+   start that a rounding error could open. */
+static int melee_live(const MeleeSpec* melee, const Weapon* weapon) {
+    if (weapon->melee_attack < 0) return 0;
+    const MeleeAttack* attack = &melee->attacks[weapon->melee_attack];
+    if (attack->active_to <= attack->active_from) return 0;
+    float t = weapon->melee_duration > 0.0f
+            ? weapon->melee_time / weapon->melee_duration : 0.0f;
+    return t >= attack->active_from && t <= attack->active_to;
+}
+
+static void melee_start(Weapon* weapon, int attack, float duration) {
+    weapon->melee_attack = attack;
+    weapon->melee_time = 0.0f;
+    weapon->melee_duration = duration;
+    /* The hit list, which is what makes one body one swing. Cleared per ATTACK
+       and not per input: a chain of three is three swings and each may cut the
+       same person again, which is what a combo is for. */
+    melee_swing_begin(&weapon->swing, attack);
+}
+
+static void melee_idle(Weapon* weapon) {
+    weapon->melee_attack = -1;
+    weapon->melee_time = 0.0f;
+    weapon->melee_duration = 0.0f;
+    melee_swing_end(&weapon->swing);
+}
+
+/* One step of a melee weapon: the clock, the sweep, and the inputs. */
+static void melee_update(Weapon* weapon, const WeaponCommand* command,
+                         float delta_time) {
+    const MeleeSpec* melee = weapon_spec_melee(weapon->spec);
+    if (!melee) return;
+
+    /* A sword in its scabbard, or halfway out of one, swings at nothing. The
+       draw has to finish first, which is what makes drawing a commitment
+       rather than a free animation the player can attack through. */
+    int busy = weapon->sheathed ||
+               weapon->melee_action != WEAPON_MELEE_ACTION_NONE;
+
+    if (weapon->melee_attack >= 0) {
+        weapon->melee_time += delta_time;
+
+        /* The blade, swept between where it was and where it is. Before the
+           chain advance below, so the frame an attack ends still pays out the
+           part of its window that ran. */
+        if (weapon->blade_valid && weapon->targets && weapon->melee_duration > 0.0f)
+            melee_swing_update(&weapon->swing, weapon->spec,
+                               &weapon->blade_previous, &weapon->blade_now,
+                               weapon->melee_time / weapon->melee_duration,
+                               weapon->targets);
+
+        if (weapon->melee_time >= weapon->melee_duration) melee_idle(weapon);
+    }
+
+    if (busy) return;
+
+    /* Block: held, and refused while the current attack is live. A block that
+       cancelled a swing already in its window would let a player attack and
+       defend on the same frame, which is the one thing a block must not be. */
+    if (command->block_held) {
+        if (weapon->melee_attack < 0)
+            melee_start(weapon, melee->block_attack, MELEE_BLOCK_HOLD);
+        else if (!melee_live(melee, weapon) &&
+                 weapon->melee_attack != melee->block_attack)
+            melee_start(weapon, melee->block_attack, MELEE_BLOCK_HOLD);
+        return;
+    }
+    /* Letting go of block drops it immediately - it is a hold, not a swing. */
+    if (weapon->melee_attack == melee->block_attack) melee_idle(weapon);
+
+    if (!command->attack_pressed && !command->heavy_pressed) return;
+
+    if (weapon->melee_attack < 0) {
+        int entry = command->heavy_pressed ? melee->heavy_attack
+                                           : melee->light_attack;
+        melee_start(weapon, entry, MELEE_ATTACK_SECONDS);
+        return;
+    }
+
+    /* Mid-chain. A further light input inside the window advances; a heavy
+       does not, because a heavy is an opener and starting one out of a chain
+       would make it the cheapest attack in the game rather than the
+       committing one. */
+    if (!command->attack_pressed) return;
+    if (!melee_live(melee, weapon)) return;
+    const MeleeAttack* current = &melee->attacks[weapon->melee_attack];
+    if (current->next < 0 || current->next >= melee->attack_count) return;
+    melee_start(weapon, current->next, MELEE_ATTACK_SECONDS);
+}
+
 void weapon_toggle_sheathe(Weapon* weapon) {
     if (!weapon || !weapon_spec_melee(weapon->spec)) return;
     if (weapon->melee_action != WEAPON_MELEE_ACTION_NONE) return;
@@ -429,6 +529,17 @@ const char* weapon_melee_clip(const Weapon* weapon, float* time_out) {
        differently. */
     if (time_out) *time_out = 0.0f;
     return weapon->spec->clips.aim[1];
+}
+
+void weapon_set_blade_transform(Weapon* weapon, const Mat4* world, int valid) {
+    if (!weapon) return;
+    if (!valid || !world) { weapon->blade_valid = 0; return; }
+    /* The first publish after a gap seeds both ends, so the swing's first step
+       sweeps a zero-length interval rather than one that starts wherever the
+       body was standing before it teleported. */
+    weapon->blade_previous = weapon->blade_valid ? weapon->blade_now : *world;
+    weapon->blade_now = *world;
+    weapon->blade_valid = 1;
 }
 
 void weapon_set_melee_base(Weapon* weapon, const ViewmodelPose* base, int valid) {
@@ -742,6 +853,8 @@ void weapon_init(Weapon* weapon, const WeaponSpec* spec) {
     /* Idle, and worn rather than held. A melee weapon comes out of its
        scabbard through the draw track rather than starting in the hand, and a
        firearm keeps these at rest for its whole life. */
+    melee_swing_end(&weapon->swing);
+    weapon->blade_valid = 0;
     weapon->melee_action = WEAPON_MELEE_ACTION_NONE;
     weapon->melee_action_progress = 0.0f;
     weapon->melee_attack = -1;
@@ -779,6 +892,8 @@ static void advance_melee_action(Weapon* weapon, float delta_time) {
     weapon->melee_action_progress = 0.0f;
     if (weapon->melee_action == WEAPON_MELEE_ACTION_SHEATHE)
         weapon->sheathed = 1;
+    melee_swing_end(&weapon->swing);
+    weapon->blade_valid = 0;
     weapon->melee_action = WEAPON_MELEE_ACTION_NONE;
 }
 
@@ -913,12 +1028,12 @@ void weapon_update(Weapon* weapon, const WeaponCommand* command,
         return;
     }
 
-    /* Reload doubles as sheathe on a weapon with nothing to reload. The same
-       key rather than a new binding: R is already "put this weapon into the
-       state it is not in", and a player who has learned it on a rifle has
-       learned it on a sword. */
-    if (command->reload_pressed && weapon_spec_melee(weapon->spec)) {
-        weapon_toggle_sheathe(weapon);
+    /* A melee weapon takes an entirely different set of inputs from here on:
+       no trigger, no cone, no magazine. The sheathe is the one thing the two
+       halves share a button for. */
+    if (weapon_spec_melee(weapon->spec)) {
+        if (command->reload_pressed) { weapon_toggle_sheathe(weapon); return; }
+        melee_update(weapon, command, delta_time);
         return;
     }
 

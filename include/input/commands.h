@@ -33,6 +33,17 @@ typedef struct {
     int fire_held;
     int aim_held;
     int reload_pressed;
+
+    /* Melee. Beside fire and aim rather than in a command struct of their own,
+       because they are the same two buttons: left attacks whatever is in the
+       player's hands and right either aims it or blocks with it. A player who
+       has learned the gun has learned the sword.
+
+       The heavy is the attack button held rather than a third binding, which
+       is what keeps a sword to the same two buttons a gun uses. */
+    int attack_pressed;
+    int heavy_pressed;
+    int block_held;
 } WeaponCommand;
 
 void commands_decode(const ActionState* actions,

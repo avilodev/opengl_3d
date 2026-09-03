@@ -33,7 +33,8 @@ PROBE_SRCS := tools/viewmodel_probe.c src/render/arm_placement.c \
               src/gameplay/weapon_specs.c src/gameplay/sights.c \
               src/render/skinned_model_glb.c src/render/skinned_pose.c \
               src/render/glb.c src/render/stb_image.c src/core/json.c \
-              src/gameplay/weapon.c src/gameplay/traversal.c src/gameplay/arena.c \
+              src/gameplay/weapon.c src/gameplay/melee_swing.c \
+              src/gameplay/traversal.c src/gameplay/arena.c \
               src/gameplay/action_track.c src/gameplay/combatant.c \
               src/gameplay/damage_number.c src/gameplay/third_person_camera.c
 
@@ -61,6 +62,18 @@ SHEATH_PROBE_SRCS := tools/sheath_probe.c src/render/character_transform.c \
               src/render/skinned_model_glb.c src/render/skinned_pose.c \
               src/render/glb.c src/render/stb_image.c src/core/json.c
 
+# What a swing hits: one hit per target, nothing outside the live window, and
+# no tunnelling at speed - three things invisible from the player's chair. See
+# tools/melee_probe.c.
+MELEE_PROBE := bin/melee_probe
+MELEE_PROBE_SRCS := tools/melee_probe.c src/gameplay/melee_swing.c \
+              src/gameplay/weapon.c src/gameplay/traversal.c \
+              src/gameplay/action_track.c src/gameplay/third_person_camera.c \
+              src/gameplay/combatant.c src/gameplay/damage_number.c \
+              src/gameplay/spawn_select.c src/gameplay/arena.c \
+              src/gameplay/weapon_specs.c src/gameplay/weapon_spec.c \
+              src/gameplay/viewmodel_pose.c src/gameplay/sights.c
+
 # Health, death and respawn, checked without a window for the same reason the
 # other two are - and with more need, because nothing in the world can shoot the
 # player yet, so this file and one debug key are the only things that run the
@@ -85,7 +98,7 @@ SPEC_PROBE_SRCS := tools/weapon_spec_probe.c src/gameplay/weapon_spec.c \
               src/render/static_model_glb.c src/render/glb.c \
               src/render/stb_image.c src/core/json.c
 
-.PHONY: sheathprobe all build clean run probe bodyprobe deathprobe specprobe
+.PHONY: meleeprobe sheathprobe all build clean run probe bodyprobe deathprobe specprobe
 
 all: $(TARGET)
 
@@ -118,6 +131,12 @@ probe: $(PROBE_SRCS)
 	./$(PROBE)
 
 # Run from the project root, for the same relative model path the game uses.
+meleeprobe: $(MELEE_PROBE_SRCS)
+	@mkdir -p bin
+	$(PROBE_CC) -Wall -Wextra -std=c11 -O1 $(CPPFLAGS) $(MELEE_PROBE_SRCS) \
+	    -o $(MELEE_PROBE) -lm
+	./$(MELEE_PROBE)
+
 sheathprobe: $(SHEATH_PROBE_SRCS)
 	@mkdir -p bin
 	$(PROBE_CC) -Wall -Wextra -std=c11 -O1 $(CPPFLAGS) $(SHEATH_PROBE_SRCS) \
@@ -146,6 +165,6 @@ deathprobe: $(DEATH_PROBE_SRCS)
 
 clean:
 	rm -rf obj $(TARGET) $(PROBE) $(BODY_PROBE) $(DEATH_PROBE) \
-	    $(SPEC_PROBE) $(SHEATH_PROBE) $(BUILD_DIR)
+	    $(SPEC_PROBE) $(SHEATH_PROBE) $(MELEE_PROBE) $(BUILD_DIR)
 
 -include $(DEPS)

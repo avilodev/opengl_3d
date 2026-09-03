@@ -6,6 +6,7 @@
 #include "gameplay/arena.h"
 #include "gameplay/player_combatant.h"
 #include "gameplay/player_controller.h"
+#include "gameplay/weapon_tuning.h"
 #include "gameplay/player_visual_state.h"
 #include "gameplay/spawn_select.h"
 #include "gameplay/third_person_camera.h"
@@ -195,6 +196,12 @@ int main(void) {
     printf("Renderer: %s (%s)\n", glGetString(GL_RENDERER), glGetString(GL_VENDOR));
     printf("Resolution: %dx%d\n", framebuffer_width, framebuffer_height);
     printf("Controls: WASD moves, Q/E lean, Shift sprints, Ctrl slides, Space jumps, F grapples, V cycles view, B looks from the front, Escape pauses.\n");
+    /* Two weapons, two sets of buttons on the same two mice. */
+    if (weapon_spec_melee(weapon.spec))
+        printf("Weapon: %s - Left Mouse swings (again inside a swing to chain "
+               "it), Right Mouse blocks, both together for the heavy, R draws "
+               "and sheathes.\n", weapon.spec->name);
+    else
     printf("Weapon: %s - hold Left Mouse to fire, Right Mouse to aim, R reloads.\n",
            weapon.spec->name);
     printf("Debug: K takes %.0f health off you - nothing in the world shoots back yet.\n",
@@ -331,6 +338,20 @@ int main(void) {
                third person and drawn in first would be two swords. */
             body.sheathed = weapon.sheathed;
 
+            /* Where the sword actually is, off the body's own hand rather than
+               off the viewmodel. The viewmodel is drawn through a projection of
+               its own, and a camera-space offset put straight into the world
+               lands about half as far off centre as the thing it came from -
+               a correction the tracer has to make and a hit test should not.
+               The hand is already in world units, and it is in the same place
+               whether or not anyone is drawing it. */
+            Mat4 blade;
+            int blade_valid = weapon_spec_melee(weapon.spec) &&
+                character_weapon_world(character_library_model(&characters,
+                                                               body.rig),
+                                       &body, &body_state, &blade);
+            weapon_set_blade_transform(&weapon, &blade, blade_valid);
+
             while (simulation_accumulator >= SIMULATION_STEP) {
                 PlayerCommand step_player = player_command;
                 CameraCommand step_camera = camera_command;
@@ -448,6 +469,28 @@ int main(void) {
                                  camera.yaw_degrees, camera.pitch_degrees,
                                  weapon.ads);
         body_state_valid = 1;
+
+        /* The swing, on the body, as a one-shot. Driven off which attack the
+           weapon says is running rather than off the input, so the animation
+           and the blade that is cutting are the same decision - the third
+           person cannot be swinging a clip the hit detection knows nothing
+           about. The clip is looked up each time it changes and not each
+           frame, which is what the comparison against the last one is for. */
+        {
+            static int played_attack = -2;
+            const SkinnedModel* rig = character_library_model(&characters,
+                                                              body.rig);
+            const MeleeSpec* body_melee = weapon_spec_melee(weapon.spec);
+            if (rig && body_melee && weapon.melee_attack != played_attack) {
+                played_attack = weapon.melee_attack;
+                if (weapon.melee_attack >= 0) {
+                    int clip = skinned_model_find_clip(rig,
+                        body_melee->attacks[weapon.melee_attack].clip);
+                    character_animation_play_oneshot(&body.animation, rig, clip,
+                                                     MELEE_ATTACK_SECONDS);
+                }
+            }
+        }
 
         /* A paused game keeps its pose: the body is not simulated while the
            menu is up, so animating it would have it walking on the spot. */

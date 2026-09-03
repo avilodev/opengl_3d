@@ -6,6 +6,8 @@
 #include "gameplay/player_controller.h"
 #include "gameplay/weapon_spec.h"
 #include "gameplay/viewmodel_pose.h"
+#include "gameplay/melee_swing.h"
+#include "utils/mat4.h"
 
 /* One gun in the player's hands. Which gun is the spec it was initialised
    with; this file has no numbers of its own.
@@ -197,6 +199,19 @@ typedef struct {
     float melee_duration;
     int sheathed;
 
+    /* What the running swing has already cut, and where the blade was last
+       frame. The previous transform is kept because a sweep needs both ends of
+       the interval and only one of them is this frame's - and it lives here
+       rather than on the swing so a swing that starts mid-motion sweeps from
+       where the blade actually was rather than from its first frame. */
+    MeleeSwing swing;
+    /* The blade's world transform on the last step, and whether there has been
+       one. A sweep needs both ends of the interval and only one of them is
+       this step's. */
+    Mat4 blade_previous;
+    Mat4 blade_now;
+    int blade_valid;
+
     /* Where the animated hand put the weapon this frame, in camera space,
        filled by whoever has the rig before the pose is composed. A firearm
        leaves it invalid and takes its base pose from the spec instead.
@@ -264,6 +279,12 @@ const char* weapon_melee_clip(const Weapon* weapon, float* time_out);
    is not already doing. Ignored on a firearm, and while an action is already
    running: a draw interrupted halfway is a sword in two places. */
 void weapon_toggle_sheathe(Weapon* weapon);
+
+/* Where the sword actually is in the world, published by the frame off the
+   body's own hand - see character_weapon_world. Melee hit detection sweeps
+   between the last two of these, so a frame that does not publish one simply
+   does not cut, which is the right answer for a frame with no body posed. */
+void weapon_set_blade_transform(Weapon* weapon, const Mat4* world, int valid);
 
 /* Where the visible streak starts, in world units. The round itself always
    leaves the eye - what the crosshair covers is what it hits - so this places

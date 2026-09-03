@@ -226,6 +226,16 @@ int character_scabbard_transform(const SkinnedModel* model, const Pose* pose,
     return 1;
 }
 
+int character_weapon_world(const SkinnedModel* model,
+                           const CharacterInstance* instance,
+                           const CharacterVisualState* state, Mat4* out) {
+    if (!model || !instance || !state || !out || !instance->ready) return 0;
+    Mat4 grip;
+    if (!character_held_weapon_transform(model, &instance->pose, &grip)) return 0;
+    *out = mat4_multiply(character_body_transform(instance, state, model), grip);
+    return 1;
+}
+
 int character_weapon_muzzle(const SkinnedModel* model,
                             const CharacterInstance* instance,
                             const CharacterVisualState* state,
