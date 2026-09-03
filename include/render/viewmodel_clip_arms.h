@@ -59,6 +59,36 @@ int viewmodel_clip_arms_base(const SkinnedModel* model, int clip, float time,
                              const MeleeSpec* melee, Pose* arms_out,
                              ViewmodelPose* out);
 
+/* Where the shoulder LINE sits in rig space, and how many metres a rig unit
+   is worth.
+
+   One function, because these two numbers place the arms and place the weapon
+   and the two have to be the same placement or the fist closes on air. The
+   shoulder line is the MIDPOINT of the two shoulders and not the firing one:
+   the arms are drawn as a pair about their own centre, and measuring the
+   weapon from one shoulder instead put the sword 21cm to the side of the hand
+   that was supposedly gripping it - a mismatch invisible to any check that
+   compared the weapon against itself.
+
+   Returns 0 if the rig has no arms to measure. */
+int viewmodel_clip_arms_calibrate(const SkinnedModel* model, float* scale);
+
+/* Where the shoulder line has got to in a given pose - the midpoint of the two
+   shoulders, in rig space.
+
+   Per pose and not from the bind, because these clips were authored for a
+   whole body: the spine bends into a cut and carries the shoulders a long way
+   with it. Anchored at the bind pose that travel arrives in camera space as
+   the whole viewmodel lurching a metre downward through every swing, which is
+   the body moving, not the arms. Anchored here the shoulders stay put and the
+   arms swing about them, which is what a first-person camera riding on those
+   shoulders would actually see.
+
+   Both the arms and the weapon in them subtract this same point, from the same
+   pose, which is what keeps the hilt in the fist frame by frame. */
+int viewmodel_clip_arms_anchor(const SkinnedModel* model, const Pose* pose,
+                               float shoulder_mid[3]);
+
 /* The clip index for a name on this rig, or -1. A thin pass-through, here so
    callers of this module do not each reach into the skinned model to ask. */
 int viewmodel_clip_arms_find(const SkinnedModel* model, const char* name);

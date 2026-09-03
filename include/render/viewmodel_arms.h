@@ -88,9 +88,15 @@ void viewmodel_arms_support_target(const WeaponSpec* spec,
    not need a second skinned instance and a second copy of the forearm cut,
    which is the only part of this file a sword has any use for.
 
+   `offset` is the same camera-space shift the weapon's own pose is given -
+   MeleeSpec.view_clip_offset - and it is passed in rather than looked up
+   because the arms and the thing in them have to move together. Applying it to
+   one and not the other is how a sword ends up floating in front of a fist
+   that is reaching for where it used to be.
+
    Returns 0 when the rig is not ready, exactly as the solve path would. */
 int viewmodel_arms_draw_pose(const CharacterLibrary* library, int rig,
-                             const Pose* pose);
+                             const Pose* pose, const float offset[3]);
 
 /* Releases the instance and the cut. Needs no GL context - a subset is index
    arrays and an instance is vertices - but call it at shutdown alongside the

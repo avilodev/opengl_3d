@@ -931,8 +931,10 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
         glLoadIdentity();
         Pose swing;
         ViewmodelPose unused;
+        const MeleeSpec* held = weapon_spec_melee(weapon->spec);
         if (melee_sample(arms, arms_rig, weapon, &swing, &unused))
-            viewmodel_arms_draw_pose(arms, arms_rig, &swing);
+            viewmodel_arms_draw_pose(arms, arms_rig, &swing,
+                                     held->view_clip_offset);
     } else if (arms && arms_rig != CHARACTER_RIG_NONE) {
         glPopMatrix();
         glPushMatrix();

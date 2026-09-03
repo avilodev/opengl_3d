@@ -15,6 +15,15 @@
 #define CLIP_ARM_LOWER "lowerarm_r"
 #define CLIP_ARM_HAND  "hand_r"
 
+/* Where in the hand a hilt actually sits, in rig units along the hand bone's
+   own axes. A bone's origin is the WRIST, and a fist closes some way past it
+   toward the fingers - on this rig about 11cm once scaled - so a weapon hung
+   at the bone floats behind the hand that is supposedly gripping it. The same
+   correction character_transform.c makes for the third-person hand, in the
+   same two directions and for the same reason. */
+#define CLIP_GRIP_INTO_PALM -0.020f
+#define CLIP_GRIP_ALONG_HAND 0.060f
+
 /* Where the shoulder line sits in camera space. The arms arrive from the clip
    in rig space about the rig's own root, which is on the floor between its
    feet; hung there unshifted they would be drawn from the player's shins. The
@@ -52,23 +61,45 @@ static float distance_between(const Mat4* a, const Mat4* b) {
     return sqrtf(d);
 }
 
-/* Rig units to metres. Measured off the bind pose across the firing arm, so it
-   is a property of the rig and not of whichever frame of whichever swing
-   happens to be asking. */
-static float rig_scale(const SkinnedModel* model) {
+/* The other shoulder, needed only to find the midpoint between them. */
+#define CLIP_ARM_UPPER_L "upperarm_l"
+
+int viewmodel_clip_arms_calibrate(const SkinnedModel* model, float* scale) {
+    if (!model) return 0;
     const Skeleton* skeleton = &model->skeleton;
     int upper = node_of(skeleton, CLIP_ARM_UPPER);
     int lower = node_of(skeleton, CLIP_ARM_LOWER);
     int hand = node_of(skeleton, CLIP_ARM_HAND);
-    if (upper < 0 || lower < 0 || hand < 0) return 0.0f;
+    if (upper < 0 || lower < 0 || hand < 0) return 0;
 
+    /* Off the bind pose, because this one IS a property of the rig: how long
+       the arm is does not change with what it is doing. */
     Pose bind;
     skinned_model_bind_pose(model, &bind);
     Mat4 u = pose_global(skeleton, &bind, upper);
     Mat4 l = pose_global(skeleton, &bind, lower);
     Mat4 h = pose_global(skeleton, &bind, hand);
+
+    /* Scaled by reach and not by height, for the reason viewmodel_arms.c is:
+       what has to be right is how far the hands are from the shoulders. */
     float reach = distance_between(&u, &l) + distance_between(&l, &h);
-    return reach > 1e-4f ? ARMS_REACH / reach : 0.0f;
+    if (reach <= 1e-4f) return 0;
+    if (scale) *scale = ARMS_REACH / reach;
+    return 1;
+}
+
+int viewmodel_clip_arms_anchor(const SkinnedModel* model, const Pose* pose,
+                               float shoulder_mid[3]) {
+    if (!model || !pose || !shoulder_mid) return 0;
+    const Skeleton* skeleton = &model->skeleton;
+    int upper = node_of(skeleton, CLIP_ARM_UPPER);
+    int upper_l = node_of(skeleton, CLIP_ARM_UPPER_L);
+    if (upper < 0 || upper_l < 0) return 0;
+    Mat4 u = pose_global(skeleton, pose, upper);
+    Mat4 ul = pose_global(skeleton, pose, upper_l);
+    for (int c = 0; c < 3; ++c)
+        shoulder_mid[c] = (u.m[12 + c] + ul.m[12 + c]) * 0.5f;
+    return 1;
 }
 
 int viewmodel_clip_arms_find(const SkinnedModel* model, const char* name) {
@@ -81,26 +112,34 @@ int viewmodel_clip_arms_pose(const SkinnedModel* model, int clip, float time,
     if (!model || !out || clip < 0 || clip >= model->clip_count) return 0;
     const Skeleton* skeleton = &model->skeleton;
 
-    int shoulder = node_of(skeleton, CLIP_ARM_UPPER);
     int hand = node_of(skeleton, CLIP_ARM_HAND);
-    if (shoulder < 0 || hand < 0) return 0;
+    if (hand < 0) return 0;
 
-    float scale = rig_scale(model);
-    if (scale <= 0.0f) return 0;
+    float scale;
+    if (!viewmodel_clip_arms_calibrate(model, &scale)) return 0;
 
     skinned_model_sample(model, clip, time, out);
 
-    /* The hand relative to the shoulder, which is the only part of the clip
-       that means anything here. Taking the hand's absolute rig position
-       instead would carry the root motion of a swing that was authored to
-       travel, and a first-person camera does not travel with it. */
-    Mat4 s = pose_global(skeleton, out, shoulder);
+    float shoulder_mid[3];
+    if (!viewmodel_clip_arms_anchor(model, out, shoulder_mid)) return 0;
+
+    /* The hand relative to the shoulder LINE of this same pose - the one point
+       the arms are also drawn about, so the two cannot separate. Against the
+       firing shoulder alone it sat 21cm to the side of the fist holding it;
+       against the bind pose's shoulders it carried the whole spine bend of a
+       cut and lurched a metre down the screen every swing. */
     Mat4 h = pose_global(skeleton, out, hand);
 
+    /* Into the fist, along the hand's own axes rather than the camera's: the
+       hand rotates through the swing and the grip point has to rotate with it,
+       or the hilt slides through the palm as the wrist turns. */
+    h = mat4_multiply(h, mat4_translation(CLIP_GRIP_INTO_PALM,
+                                          CLIP_GRIP_ALONG_HAND, 0.0f));
+
     if (hand_out) {
-        float rig_offset[3] = { h.m[12] - s.m[12],
-                                h.m[13] - s.m[13],
-                                h.m[14] - s.m[14] };
+        float rig_offset[3] = { h.m[12] - shoulder_mid[0],
+                                h.m[13] - shoulder_mid[1],
+                                h.m[14] - shoulder_mid[2] };
         float camera[3];
         arm_placement_rig_to_camera(rig_offset, 0.0f, camera);
 

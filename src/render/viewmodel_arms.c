@@ -1,4 +1,5 @@
 #include "render/viewmodel_arms.h"
+#include "render/viewmodel_clip_arms.h"
 #include "render/arm_placement.h"
 #include "utils/mat4.h"
 #include "utils/math_utils.h"
@@ -1261,24 +1262,35 @@ void viewmodel_arms_draw(const CharacterLibrary* library, int rig,
 }
 
 int viewmodel_arms_draw_pose(const CharacterLibrary* library, int rig,
-                             const Pose* pose) {
+                             const Pose* pose, const float offset[3]) {
     if (g_arms.state == ARMS_FAILED) return 0;
     if (g_arms.state != ARMS_READY && !build(library, rig)) return 0;
     if (character_library_model(library, rig) != g_arms.model) return 0;
     if (!pose) return 0;
 
     const SkinnedModel* model = g_arms.model;
+
+    /* Asked of the clip-arms module rather than read off g_arms.rig, so the
+       arms and the weapon in them are placed by one function and cannot be
+       calibrated apart. This file's own numbers are for the SOLVE, which
+       measures from the same points but is free to move them. */
+    float shoulder_mid[3], scale;
+    if (!viewmodel_clip_arms_calibrate(model, &scale)) return 0;
+    if (!viewmodel_clip_arms_anchor(model, pose, shoulder_mid)) return 0;
+
     skinned_model_skin(model, pose, &g_arms.instance);
 
     glPushMatrix();
     /* The same chain the solve path ends with, with no blade: a swing's stance
        is in the clip, and turning the whole rig on top of it would turn the
-       animation as well as the shoulders. */
-    glTranslatef(0.0f, -ARMS_SHOULDER_DOWN, 0.0f);
+       animation as well as the shoulders. The weapon's own offset goes on
+       first, so the hands and the hilt travel together. */
+    glTranslatef(offset ? offset[0] : 0.0f,
+                 (offset ? offset[1] : 0.0f) - ARMS_SHOULDER_DOWN,
+                 offset ? offset[2] : 0.0f);
     glRotatef(ARMS_FACING_DEGREES, 0, 1, 0);
-    glScalef(g_arms.rig.scale, g_arms.rig.scale, g_arms.rig.scale);
-    glTranslatef(-g_arms.rig.shoulder_mid[0], -g_arms.rig.shoulder_mid[1],
-                 -g_arms.rig.shoulder_mid[2]);
+    glScalef(scale, scale, scale);
+    glTranslatef(-shoulder_mid[0], -shoulder_mid[1], -shoulder_mid[2]);
     skinned_model_draw_subset(model, &g_arms.instance, &g_arms.subset);
     glPopMatrix();
     return 1;

@@ -1919,6 +1919,57 @@ static void check_melee_rides_hand(const SkinnedModel* model) {
     check("sword y against hand_r", pose.y, hand.m[13], 0.03f);
     check("sword z against hand_r", pose.z, hand.m[14], 0.03f);
 
+    /* And now the check that matters: the hand that is DRAWN has to close on
+       the hilt that is drawn.
+
+       Everything above compares two numbers that come out of the same
+       function, which proves they agree with themselves. This one rebuilds the
+       transform chain viewmodel_arms_draw_pose hands to GL - the offset, the
+       facing, the rig scale, the shoulder shift - and puts hand_r through it,
+       which is literally where the knuckles end up on screen. If that is not
+       where the sword is, the sword is floating beside a fist that is not
+       holding it, and no other check in this file can tell. */
+    float shoulder_mid[3], rig_scale;
+    Pose sampled;
+    skinned_model_sample(model, clip, time, &sampled);
+    if (viewmodel_clip_arms_calibrate(model, &rig_scale) &&
+        viewmodel_clip_arms_anchor(model, &sampled, shoulder_mid)) {
+        Mat4 hand_rig;
+        if (skinned_model_bone_matrix(model, &sampled, "hand_r", &hand_rig)) {
+            float local[3], drawn[3];
+            for (int c = 0; c < 3; ++c)
+                local[c] = (hand_rig.m[12 + c] - shoulder_mid[c]) * rig_scale;
+            arm_placement_rig_to_camera(local, 0.0f, drawn);
+            drawn[1] -= ARMS_SHOULDER_DOWN;
+            for (int c = 0; c < 3; ++c) drawn[c] += melee->view_clip_offset[c];
+
+            /* A bound and not an equality. The hilt sits deliberately a
+               little past the wrist - a fist closes toward the fingers, and
+               both views step into the palm to say so - so what has to hold is
+               that the sword is INSIDE the hand, within a hand's length of the
+               bone that carries it. That admits the palm step at 7cm and
+               refuses the two failures worth refusing: measuring the weapon
+               from one shoulder while the arms are drawn about their midpoint,
+               which was 21cm out, and giving the weapon an offset the arms do
+               not get, which was another 36. */
+            float gap = 0.0f;
+            const float from_pose[3] = { pose.x, pose.y, pose.z };
+            for (int c = 0; c < 3; ++c) {
+                float e = from_pose[c] - drawn[c];
+                gap += e * e;
+            }
+            gap = sqrtf(gap);
+            int gripped = gap < 0.12f;
+            if (!gripped) ++failures;
+            printf("  %s the hilt is inside the drawn fist%*s%.4f m from the "
+                   "wrist\n", gripped ? "ok  " : "FAIL", 14, "", gap);
+        } else {
+            expect(0, "the rig has a hand_r to draw");
+        }
+    } else {
+        expect(0, "the rig calibrates");
+    }
+
     /* And the regression guard: a firearm still takes its base from the spec,
        so nothing above has moved the rifle. */
     Weapon rifle;

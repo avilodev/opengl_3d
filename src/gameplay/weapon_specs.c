@@ -304,9 +304,14 @@ static const MeleeSpec KATANA_MELEE = {
        the body, where a wind-up that takes the hand back past the shoulder is
        just a wind-up; on a camera sitting at the shoulder line the same frames
        put the hand behind the eye, where it draws perfectly happily and is
-       never seen. Measured against the widest of the five - Sword_Heavy_Combo
-       reaches z +0.49 at its midpoint - with enough margin that the light
-       chain does not graze the near plane. */
+       never seen.
+
+       Sized against the widest of the five. Sword_Heavy_Combo sets both
+       numbers: it reaches z +0.34 at its midpoint and drops to y -1.01 on the
+       follow-through, and this is what brings both back inside the frame with
+       a little to spare. Applied to the ARMS as well as the sword - a shift
+       given to one and not the other is how a hilt ends up floating in front
+       of a fist reaching for where it used to be. */
     .draw_track = &KATANA_DRAW,
     .sheathe_track = &KATANA_SHEATHE,
     /* Fast enough to be a commitment rather than a cutscene, slow enough that
@@ -315,7 +320,7 @@ static const MeleeSpec KATANA_MELEE = {
     .draw_time = 0.70f,
     .sheathe_time = 0.85f,
 
-    .view_clip_offset = { 0.0f, 0.10f, -0.35f },
+    .view_clip_offset = { 0.0f, 0.22f, -0.40f },
 };
 
 const WeaponSpec WEAPON_SPEC_KATANA = {
