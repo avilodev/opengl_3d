@@ -151,10 +151,13 @@ static void draw_acog_reticle(const Weapon* weapon, float fov_degrees,
     draw_ring(center_x, center_y, window + HUD_ACOG_RIM * scale * 1.4f,
               HUD_ACOG_RIM * scale * 0.5f, 0.24f, 0.25f, 0.28f, alpha * 0.8f);
 
-    /* The cone, only once sustained fire has actually opened it. */
-    float opened = clampf((weapon->bloom_degrees - weapon->spec->bloom_min) /
-                          (weapon->spec->bloom_max - weapon->spec->bloom_min),
-                          0.0f, 1.0f);
+    /* The cone, only once sustained fire has actually opened it. A weapon with
+       no gun half has no cone, so there is nothing to open and nothing to
+       draw. */
+    const FirearmSpec* gun = weapon_spec_firearm(weapon->spec);
+    float opened = gun ? clampf((weapon->bloom_degrees - gun->bloom_min) /
+                                (gun->bloom_max - gun->bloom_min), 0.0f, 1.0f)
+                       : 0.0f;
     if (opened > 0.02f) {
         float cone = degrees_to_pixels(weapon_cone_degrees(weapon), fov_degrees,
                                        viewport_height);
@@ -244,10 +247,12 @@ static void draw_crosshair(const Weapon* weapon, float fov_degrees,
 
     /* Dimmer as it opens, so a spraying player can see at a glance that the
        weapon has stopped being precise without having to read the gap. */
-    float tightness = 1.0f - clampf((weapon->bloom_degrees -
-                                     weapon->spec->bloom_min) /
-                                    (weapon->spec->bloom_max -
-                                     weapon->spec->bloom_min), 0.0f, 1.0f);
+    const FirearmSpec* gun = weapon_spec_firearm(weapon->spec);
+    float tightness = gun ? 1.0f - clampf((weapon->bloom_degrees -
+                                           gun->bloom_min) /
+                                          (gun->bloom_max - gun->bloom_min),
+                                          0.0f, 1.0f)
+                          : 1.0f;
     float alpha = weapon->is_reloading ? 0.28f : 0.55f + tightness * 0.35f;
     /* The ticks hand over to the reticle as the scope comes up. */
     alpha *= show_sight ? 1.0f - weapon->ads : 1.0f;
@@ -278,8 +283,8 @@ static void draw_crosshair(const Weapon* weapon, float fov_degrees,
        chevron, which is painted against a magnified second pass of the world
        rather than against the viewmodel, so the optic's own field of view is
        what turns the cone into pixels for it. */
-    if (weapon->ads > 0.01f && show_sight &&
-        weapon->spec->sight->reticle == WEAPON_RETICLE_CHEVRON)
+    if (weapon->ads > 0.01f && show_sight && gun && gun->sight &&
+        gun->sight->reticle == WEAPON_RETICLE_CHEVRON)
         draw_acog_reticle(weapon, scope_fov_degrees, viewport_width,
                           viewport_height, scale, weapon->ads);
 }
@@ -495,12 +500,17 @@ static void draw_player_state(const Combatant* body, int viewport_width,
 
 static void draw_ammo(const Weapon* weapon, int viewport_width,
                       int viewport_height, float scale) {
+    /* A weapon with no magazine has no count to give, and an ammo readout on a
+       sword would be a number the player cannot spend. */
+    const FirearmSpec* gun = weapon_spec_firearm(weapon->spec);
+    if (!gun) return;
+
     char text[32];
     if (weapon->is_reloading)
         snprintf(text, sizeof text, "RELOADING");
     else
         snprintf(text, sizeof text, "%d / %d", weapon->ammo_in_magazine,
-                 weapon->spec->magazine);
+                 gun->magazine);
 
     float margin = HUD_AMMO_MARGIN * scale;
     float width = 220.0f * scale;

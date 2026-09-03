@@ -2,26 +2,49 @@
 #include "gameplay/movement_tuning.h"
 #include "gameplay/weapon_tuning.h"
 
+#include <stddef.h>
+
 /* The numbers a gun no longer states, derived from the halves that do state
    themselves. Each one lives here and only here, so there is nowhere for a
    second copy to drift from. */
 
+const FirearmSpec* weapon_spec_firearm(const WeaponSpec* spec) {
+    return spec && spec->kind == WEAPON_CLASS_FIREARM ? spec->firearm : NULL;
+}
+
+/* The four below are all a sight's, and a weapon with no gun half has no
+   sight. They answer zero rather than dereferencing, because every one of
+   them is read on a frame the player might be holding anything - and a sight
+   height of zero is a weapon that does not drop when it aims, which is what a
+   weapon with no sight should do. */
+
 float weapon_spec_sight_height(const WeaponSpec* spec) {
-    return spec->rail_height + spec->sight->reticle_above_seat;
+    const FirearmSpec* gun = weapon_spec_firearm(spec);
+    if (!gun || !gun->sight) return 0.0f;
+    return gun->rail_height + gun->sight->reticle_above_seat;
 }
 
 float weapon_spec_sight_forward(const WeaponSpec* spec) {
-    return spec->rail_forward;
+    const FirearmSpec* gun = weapon_spec_firearm(spec);
+    return gun ? gun->rail_forward : 0.0f;
 }
 
 float weapon_spec_ads_fov(const WeaponSpec* spec) {
+    const FirearmSpec* gun = weapon_spec_firearm(spec);
+    if (!gun || !gun->sight) return VIEW_BASE_FOV;
     /* One power divides by one, so an unmagnified sight lands exactly on the
        base field of view rather than near it. */
-    return VIEW_BASE_FOV / spec->sight->magnification;
+    return VIEW_BASE_FOV / gun->sight->magnification;
+}
+
+float weapon_spec_view_ads_fov(const WeaponSpec* spec) {
+    const FirearmSpec* gun = weapon_spec_firearm(spec);
+    return gun ? gun->view_ads_fov : spec->view_fov;
 }
 
 float weapon_spec_ads_time(const WeaponSpec* spec) {
-    return spec->sight->ads_time;
+    const FirearmSpec* gun = weapon_spec_firearm(spec);
+    return gun && gun->sight ? gun->sight->ads_time : 0.0f;
 }
 
 /* The shared carry. Assembled rather than stated, because the angles and the
@@ -253,9 +276,14 @@ void weapon_spec_rest_pose(const WeaponSpec* spec, float sprint, float reload,
        lands on the middle of the screen, pulled forward, and square - a canted
        sight would point where it is canted, which is the one place that would
        stop being cosmetic. */
+    /* A weapon with no gun half never aims - `ads` is zero for it - but the
+       aimed pose is still built on the way past, so it has to be buildable.
+       No pull-in is the honest answer for a weapon with nothing to bring to
+       the eye: it stays where the hip put it. */
+    const FirearmSpec* gun = weapon_spec_firearm(spec);
     ViewmodelPose aimed = {
         0.0f, -weapon_spec_sight_height(spec),
-        -spec->view_forward - spec->view_ads_forward,
+        -spec->view_forward - (gun ? gun->view_ads_forward : 0.0f),
         0.0f, 0.0f, 0.0f,
         0.0f, 0.0f,
     };

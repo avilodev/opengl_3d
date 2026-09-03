@@ -644,7 +644,7 @@ static void solve_for_weapon(const WeaponSpec* spec) {
                                         spec->view_fov * 0.5f, &g_arms.sprint);
     pose_targets(spec, 0.0f, 0.0f, 1.0f, targets);
     int aimed = arm_placement_solve(&g_arms.rig, targets,
-                                    spec->view_ads_fov * 0.5f, &g_arms.ads);
+                                    weapon_spec_view_ads_fov(spec) * 0.5f, &g_arms.ads);
 
     /* And one for every key of the reload track. The firing hand stays on the
        pistol grip throughout - a magazine change is done one-handed on the

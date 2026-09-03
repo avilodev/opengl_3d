@@ -28,30 +28,38 @@ static float random_unit(Weapon* weapon) {
 }
 
 float weapon_cone_degrees(const Weapon* weapon) {
+    /* A weapon with no gun half has no cone at all: its bloom never leaves
+       zero, so the scale it would be narrowed by does not matter. */
+    const FirearmSpec* gun = weapon_spec_firearm(weapon->spec);
     return weapon->bloom_degrees *
-           lerpf(1.0f, weapon->spec->ads_bloom_scale, weapon->ads);
+           lerpf(1.0f, gun ? gun->ads_bloom_scale : 1.0f, weapon->ads);
 }
 
 float weapon_sight_window_fraction(const Weapon* weapon) {
     const WeaponSpec* spec = weapon->spec;
+    /* No gun half, no glass: there is no window to take a share of the
+       screen, which is what zero says to every caller of this. */
+    const FirearmSpec* gun = weapon_spec_firearm(spec);
+    if (!gun || !gun->sight) return 0.0f;
     /* Distance from the eye to the optic: the viewmodel's origin, plus however
        far forward of that the glass sits. */
-    float origin = spec->view_forward + spec->view_ads_forward * weapon->ads;
+    float origin = spec->view_forward + gun->view_ads_forward * weapon->ads;
     float distance = fmaxf(0.05f, origin + weapon_spec_sight_forward(spec));
     /* The gun is drawn through its own projection, not the world's, so the
        bore's share of the screen is measured against that one. */
-    float view_fov = lerpf(spec->view_fov, spec->view_ads_fov, weapon->ads);
+    float view_fov = lerpf(spec->view_fov, weapon_spec_view_ads_fov(spec), weapon->ads);
     /* The glass belongs to the optic, so its width comes off the sight and not
        out of the shared tuning header - which is what let a prism sight's
        radius decide the size of a holographic sight's window. */
-    return (spec->sight->window_radius / distance) /
+    return (gun->sight->window_radius / distance) /
            tanf(view_fov * 0.5f * MATH_DEG_TO_RAD);
 }
 
 int weapon_sight_is_magnified(const Weapon* weapon) {
     /* Asked of the magnification rather than of a named sight, so a new optic
        needs no case here to be understood. */
-    return weapon->spec->sight->magnification > 1.0f;
+    const FirearmSpec* gun = weapon_spec_firearm(weapon->spec);
+    return gun && gun->sight && gun->sight->magnification > 1.0f;
 }
 
 void weapon_aim_angles(const Weapon* weapon, float look_yaw_degrees,
@@ -386,8 +394,11 @@ void weapon_tracer_origin(const Weapon* weapon, const PlayerController* player,
        sprint carry's 25 degrees. */
     ViewmodelPose pose;
     weapon_viewmodel_pose(weapon, player, &pose);
-    const float local[3] = {0.0f, weapon->spec->muzzle_up,
-                            -weapon->spec->muzzle_forward};
+    /* A weapon with no barrel has no tip for a streak to leave from; the
+       caller falls back to the eye, which is where it started. */
+    const FirearmSpec* gun = weapon_spec_firearm(weapon->spec);
+    const float local[3] = {0.0f, gun ? gun->muzzle_up : 0.0f,
+                            gun ? -gun->muzzle_forward : 0.0f};
     float tip[3];
     viewmodel_pose_transform_point(&pose, local, tip);
     float ox = tip[0], oy = tip[1], oz = tip[2];
@@ -406,7 +417,7 @@ void weapon_tracer_origin(const Weapon* weapon, const PlayerController* player,
        a tracer is a streak whose direction the eye reads, and the round itself
        leaves the eye regardless. */
     float world_tangent = tanf(view_fov_degrees * 0.5f * MATH_DEG_TO_RAD);
-    float gun_fov = lerpf(weapon->spec->view_fov, weapon->spec->view_ads_fov,
+    float gun_fov = lerpf(weapon->spec->view_fov, weapon_spec_view_ads_fov(weapon->spec),
                           weapon->ads);
     float gun_tangent = tanf(gun_fov * 0.5f * MATH_DEG_TO_RAD);
     if (gun_tangent > 0.0001f) {
@@ -558,8 +569,13 @@ static void fire(Weapon* weapon, const PlayerController* player,
                  float camera_roll_degrees, float eye_height,
                  float view_fov_degrees) {
     const WeaponSpec* spec = weapon->spec;
+    /* Only a gun fires. The caller already gates on ammunition, which a melee
+       weapon has none of, so this is belt and braces - but it is the guard
+       that makes every gun-only read below safe. */
+    const FirearmSpec* gun = weapon_spec_firearm(spec);
+    if (!gun) return;
     weapon->ammo_in_magazine--;
-    weapon->fire_cooldown = spec->fire_interval;
+    weapon->fire_cooldown = gun->fire_interval;
     weapon->quiet_time = 0.0f;
     weapon->muzzle_flash = WEAPON_MUZZLE_FLASH_TIME;
     weapon->view_kick = 1.0f;
@@ -598,21 +614,25 @@ static void fire(Weapon* weapon, const PlayerController* player,
 
     /* Bloom is charged after the shot, so the first round of a burst leaves at
        whatever accuracy the player had recovered to. */
-    weapon->bloom_degrees = fminf(spec->bloom_max,
-                                  weapon->bloom_degrees + spec->bloom_per_shot);
-    float kick = lerpf(1.0f, spec->ads_recoil_scale, weapon->ads);
-    weapon->gun_pitch_degrees += spec->recoil_pitch * kick;
+    weapon->bloom_degrees = fminf(gun->bloom_max,
+                                  weapon->bloom_degrees + gun->bloom_per_shot);
+    float kick = lerpf(1.0f, gun->ads_recoil_scale, weapon->ads);
+    weapon->gun_pitch_degrees += gun->recoil_pitch * kick;
     weapon->gun_yaw_degrees += (random_unit(weapon) * 2.0f - 1.0f) *
-                               spec->recoil_yaw * kick;
+                               gun->recoil_yaw * kick;
 }
 
 /* Non-zero when a reload actually started, so a caller can tell a request that
    did something from one there was nothing to do about. */
 static int begin_reload(Weapon* weapon) {
+    /* Nothing to reload on a weapon with no magazine, which is not a failure
+       to report - it is a request there was never anything to do about. */
+    const FirearmSpec* gun = weapon_spec_firearm(weapon->spec);
+    if (!gun) return 0;
     if (weapon->is_reloading) return 0;
-    if (weapon->ammo_in_magazine >= weapon->spec->magazine) return 0;
+    if (weapon->ammo_in_magazine >= gun->magazine) return 0;
     weapon->is_reloading = 1;
-    weapon->reload_time_left = weapon->spec->reload_time;
+    weapon->reload_time_left = gun->reload_time;
     return 1;
 }
 
@@ -623,12 +643,15 @@ void weapon_init(Weapon* weapon, const WeaponSpec* spec) {
        caller that never publishes a set gets geometry-only traces rather than a
        stale pointer into somebody else's world. */
     weapon->targets = NULL;
-    weapon->ammo_in_magazine = spec->magazine;
+    /* A weapon with no gun half starts with no rounds and a cone that is
+       already shut, which is the resting state it never leaves. */
+    const FirearmSpec* gun = weapon_spec_firearm(spec);
+    weapon->ammo_in_magazine = gun ? gun->magazine : 0;
     weapon->is_reloading = 0;
     weapon->reload_time_left = 0.0f;
     weapon->fire_cooldown = 0.0f;
-    weapon->quiet_time = spec->bloom_recovery_delay;
-    weapon->bloom_degrees = spec->bloom_min;
+    weapon->quiet_time = gun ? gun->bloom_recovery_delay : 0.0f;
+    weapon->bloom_degrees = gun ? gun->bloom_min : 0.0f;
     weapon->muzzle_flash = 0.0f;
     weapon->gun_pitch_degrees = 0.0f;
     weapon->gun_yaw_degrees = 0.0f;
@@ -659,6 +682,9 @@ void weapon_latch_trigger(Weapon* weapon) {
 }
 
 static void advance_timers(Weapon* weapon, float delta_time) {
+    /* A weapon with no gun half has no cone to recover, so the whole bloom
+       half of this is skipped rather than run against zeroes. */
+    const FirearmSpec* gun = weapon_spec_firearm(weapon->spec);
     /* The kick springs out of the gun's own aim rather than out of the
        camera's. Decayed here, once, and read by both the shot and the
        reticle - they are the same two numbers, so they cannot disagree. */
@@ -670,14 +696,14 @@ static void advance_timers(Weapon* weapon, float delta_time) {
        would eventually grow large enough that adding a frame to it does
        nothing. Capping it keeps the comparison meaningful forever. */
     weapon->quiet_time = fminf(weapon->quiet_time + delta_time,
-                               weapon->spec->bloom_recovery_delay + 1.0f);
+                               (gun ? gun->bloom_recovery_delay : 0.0f) + 1.0f);
     weapon->muzzle_flash = fmaxf(0.0f, weapon->muzzle_flash - delta_time);
     weapon->view_kick *= expf(-delta_time * WEAPON_VIEW_KICK_DECAY);
 
-    if (weapon->quiet_time >= weapon->spec->bloom_recovery_delay)
+    if (gun && weapon->quiet_time >= gun->bloom_recovery_delay)
         weapon->bloom_degrees = approachf(weapon->bloom_degrees,
-                                          weapon->spec->bloom_min,
-                                          weapon->spec->bloom_recovery * delta_time);
+                                          gun->bloom_min,
+                                          gun->bloom_recovery * delta_time);
 
     for (int i = 0; i < WEAPON_TRACER_COUNT; ++i)
         weapon->tracers[i].life = fmaxf(0.0f,
@@ -714,9 +740,10 @@ void weapon_update(Weapon* weapon, const WeaponCommand* command,
        make the magazine leave the gun at a different point every time. It runs
        to 1 and is left there for the frame the reload finishes on, so the track
        ends at the pose it started from and there is nothing to snap back. */
+    const FirearmSpec* gun = weapon_spec_firearm(weapon->spec);
     float was_reloading = weapon->reload;
-    weapon->reload = weapon->is_reloading && weapon->spec->reload_time > 1e-4f
-        ? 1.0f - weapon->reload_time_left / weapon->spec->reload_time
+    weapon->reload = weapon->is_reloading && gun && gun->reload_time > 1e-4f
+        ? 1.0f - weapon->reload_time_left / gun->reload_time
         : 0.0f;
     if (weapon->reload < 0.0f) weapon->reload = 0.0f;
     if (weapon->reload > 1.0f) weapon->reload = 1.0f;
@@ -728,7 +755,7 @@ void weapon_update(Weapon* weapon, const WeaponCommand* command,
     {
         const ReloadSequence* track = weapon_spec_reload_sequence(weapon->spec);
         if (weapon->reload >= track->drop_at && was_reloading < track->drop_at &&
-            weapon->spec->magazine_part)
+            gun && gun->magazine_part)
             drop_magazine(weapon, player, aim_yaw_degrees, aim_pitch_degrees,
                           camera_roll_degrees, eye_height);
     }
@@ -779,7 +806,7 @@ void weapon_update(Weapon* weapon, const WeaponCommand* command,
         if (weapon->reload_time_left <= 0.0f) {
             weapon->is_reloading = 0;
             weapon->reload_time_left = 0.0f;
-            weapon->ammo_in_magazine = weapon->spec->magazine;
+            weapon->ammo_in_magazine = gun ? gun->magazine : 0;
         }
         return;
     }

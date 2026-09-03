@@ -303,11 +303,14 @@ int main(void) {
                the viewmodel's own barrel is the right answer, so nothing is
                published and the weapon falls back to it. */
             float body_muzzle[3] = {0.0f, 0.0f, 0.0f};
-            int body_muzzle_valid = !camera.is_first_person &&
+            /* A weapon with no barrel has no muzzle to publish, and a streak
+               that left one would be leaving a sword. */
+            const FirearmSpec* body_gun = weapon_spec_firearm(weapon.spec);
+            int body_muzzle_valid = body_gun && !camera.is_first_person &&
                 character_weapon_muzzle(character_library_model(&characters, body.rig),
                                         &body, &body_state,
-                                        weapon.spec->muzzle_up,
-                                        weapon.spec->muzzle_forward, body_muzzle);
+                                        body_gun->muzzle_up,
+                                        body_gun->muzzle_forward, body_muzzle);
             weapon_set_world_muzzle(&weapon, body_muzzle, body_muzzle_valid);
 
             while (simulation_accumulator >= SIMULATION_STEP) {

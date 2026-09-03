@@ -95,9 +95,10 @@ static void draw_impacts(const Weapon* weapon) {
    magazine that glowed through a wall would be a decal pretending to be one. */
 static void draw_dropped_mags(const Weapon* weapon) {
     const WeaponSpec* spec = weapon->spec;
-    if (!spec->magazine_part) return;
+    const FirearmSpec* firearm = weapon_spec_firearm(spec);
+    if (!firearm->magazine_part) return;
     /* Empty: a magazine on the floor is one somebody has finished with. */
-    const char* parts[2] = {spec->magazine_part, NULL};
+    const char* parts[2] = {firearm->magazine_part, NULL};
 
     for (int i = 0; i < WEAPON_DROPPED_MAG_COUNT; ++i) {
         const WeaponDroppedMag* mag = &weapon->dropped_mags[i];
@@ -184,6 +185,9 @@ static void draw_acog(float height, float forward, float radius) {
    dot lands on the reticle. There is one place those numbers live, and both
    readers of them are here. */
 void weapon_renderer_draw_sight(const WeaponSpec* spec) {
+    /* A weapon with no gun half has no rail and so no optic to draw. */
+    const FirearmSpec* firearm = weapon_spec_firearm(spec);
+    if (!firearm || !firearm->sight) return;
     /* The translate is this function's job and not the mesh's. A gun's mesh is
        authored about its bore and draws at the caller's transform untouched;
        an optic's is authored about its reticle, so drawing it untouched puts
@@ -193,14 +197,14 @@ void weapon_renderer_draw_sight(const WeaponSpec* spec) {
     float forward = weapon_spec_sight_forward(spec);
     glPushMatrix();
     glTranslatef(0.0f, height, -forward);
-    int drawn = weapon_model_draw_sight(spec->sight);
+    int drawn = weapon_model_draw_sight(firearm->sight);
     glPopMatrix();
     if (drawn) return;
     /* No mesh for this sight yet, so it is boxes. Only the magnified optic is
        ever in that state now, and it is the one shape boxes can still tell:
        a ring with a genuinely open bore. It places itself, which is why it is
        outside the transform above. */
-    draw_acog(height, forward, spec->sight->window_radius);
+    draw_acog(height, forward, firearm->sight->window_radius);
 }
 
 
@@ -326,6 +330,7 @@ static void draw_reticle_disc(float half_angle_degrees,
 static void draw_holographic_reticle(const Weapon* weapon, float world_fov,
                                      float aspect_ratio) {
     const WeaponSpec* spec = weapon->spec;
+    const FirearmSpec* firearm = weapon_spec_firearm(spec);
 
     /* Colour and depth writes off: nothing of the glass should land on screen
        here, and a pane that wrote depth would occlude what it exists to
@@ -342,7 +347,7 @@ static void draw_holographic_reticle(const Weapon* weapon, float world_fov,
     glPushMatrix();
     glTranslatef(0.0f, weapon_spec_sight_height(spec),
                  -weapon_spec_sight_forward(spec));
-    int has_glass = weapon_model_sight_glass(spec->sight);
+    int has_glass = weapon_model_sight_glass(firearm->sight);
     glPopMatrix();
 
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
@@ -393,8 +398,8 @@ static void draw_holographic_reticle(const Weapon* weapon, float world_fov,
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
     float dim = weapon->is_reloading ? 0.45f : 1.0f;
 
-    float opened = clampf((weapon->bloom_degrees - spec->bloom_min) /
-                          (spec->bloom_max - spec->bloom_min), 0.0f, 1.0f);
+    float opened = clampf((weapon->bloom_degrees - firearm->bloom_min) /
+                          (firearm->bloom_max - firearm->bloom_min), 0.0f, 1.0f);
     if (opened > 0.02f)
         draw_reticle_ring(weapon_cone_degrees(weapon),
                           RETICLE_DISTANCE *
@@ -536,7 +541,8 @@ static const char* const* magazine_split(const Weapon* weapon,
                                          const char* hide[3],
                                          ReloadSample* sample) {
     const WeaponSpec* spec = weapon->spec;
-    if (weapon_reload_blend(weapon) <= 0.0f || !spec->magazine_part) return NULL;
+    const FirearmSpec* firearm = weapon_spec_firearm(spec);
+    if (weapon_reload_blend(weapon) <= 0.0f || !firearm->magazine_part) return NULL;
     reload_sequence_sample(weapon_spec_reload_sequence(spec),
                            weapon->reload, sample);
     /* Seated at BOTH ends of the span is the only case where the magazine is
@@ -548,8 +554,8 @@ static const char* const* magazine_split(const Weapon* weapon,
         return NULL;
 
     int n = 0;
-    hide[n++] = spec->magazine_part;
-    if (spec->rounds_part) hide[n++] = spec->rounds_part;
+    hide[n++] = firearm->magazine_part;
+    if (firearm->rounds_part) hide[n++] = firearm->rounds_part;
     hide[n] = NULL;
     return hide;
 }
@@ -559,6 +565,7 @@ static const char* const* magazine_split(const Weapon* weapon,
    current, so a magazine still nominally on the weapon needs no work at all. */
 static void draw_loose_magazine(const Weapon* weapon, const Mat4* gun) {
     const WeaponSpec* spec = weapon->spec;
+    const FirearmSpec* firearm = weapon_spec_firearm(spec);
     const char* hide[3];
     ReloadSample sample;
     /* The same question draw_receiver asked, asked again rather than passed
@@ -644,12 +651,12 @@ static void draw_loose_magazine(const Weapon* weapon, const Mat4* gun) {
 
     const char* parts[3];
     int n = 0;
-    parts[n++] = spec->magazine_part;
+    parts[n++] = firearm->magazine_part;
     /* Rounds on the fresh magazine and not on the spent one. The moment the
        player can see the difference is short, and it is the moment that says
        what just happened. */
-    if (spec->rounds_part && (t < 0.5f ? from->loaded : to->loaded))
-        parts[n++] = spec->rounds_part;
+    if (firearm->rounds_part && (t < 0.5f ? from->loaded : to->loaded))
+        parts[n++] = firearm->rounds_part;
     parts[n] = NULL;
 
     glPushMatrix();
@@ -673,6 +680,7 @@ static void draw_loose_magazine(const Weapon* weapon, const Mat4* gun) {
 static void draw_receiver(const Weapon* weapon) {
     /* The mesh is authored in exactly these axes, so it needs no transform of
        its own; the boxes stand in for whichever gun has no mesh yet. */
+    const FirearmSpec* firearm = weapon_spec_firearm(weapon->spec);
     const char* hide[3];
     ReloadSample sample;
     const char* const* without = magazine_split(weapon, hide, &sample);
@@ -708,10 +716,12 @@ static void draw_receiver(const Weapon* weapon) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
     glColor4f(1.0f, .88f, .55f, flash);
-    glPushMatrix(); glTranslatef(0, weapon->spec->muzzle_up,
-                                 -weapon->spec->muzzle_forward);
-    primitives_draw_box(.085f * flash, .085f * flash, .10f * flash);
-    glPopMatrix();
+    if (firearm) {
+        glPushMatrix(); glTranslatef(0, firearm->muzzle_up,
+                                     -firearm->muzzle_forward);
+        primitives_draw_box(.085f * flash, .085f * flash, .10f * flash);
+        glPopMatrix();
+    }
     glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
 }
@@ -730,7 +740,7 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
-    double fov = lerpf(weapon->spec->view_fov, weapon->spec->view_ads_fov,
+    double fov = lerpf(weapon->spec->view_fov, weapon_spec_view_ads_fov(weapon->spec),
                        weapon->ads);
     double top = 0.02 * tan(fov * MATH_PI / 360.0);
     glFrustum(-top * aspect_ratio, top * aspect_ratio, -top, top, 0.02, 8.0);
@@ -819,7 +829,9 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
     draw_receiver(weapon);
     /* After the gun, so the hood is in the depth buffer to occlude with, and
        the glass is available to mask to. */
-    if (weapon->spec->sight->reticle == WEAPON_RETICLE_HOLOGRAPHIC)
+    const FirearmSpec* firearm = weapon_spec_firearm(weapon->spec);
+    if (firearm && firearm->sight &&
+        firearm->sight->reticle == WEAPON_RETICLE_HOLOGRAPHIC)
         draw_holographic_reticle(weapon, camera->fov_degrees, aspect_ratio);
 
     /* The arms, in camera space - they hang off the player's shoulders and are

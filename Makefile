@@ -58,7 +58,16 @@ DEATH_PROBE_SRCS := tools/death_probe.c src/gameplay/combatant.c \
               src/gameplay/player_wallclimb.c src/gameplay/player_grapple.c \
               src/gameplay/player_mantle.c src/gameplay/traversal.c
 
-.PHONY: all build clean run probe bodyprobe deathprobe
+# The weapon specs, checked without a window: that every weapon says what kind
+# it is and carries the one class half that kind means, that its mesh loads,
+# and that every part name it states exists on that mesh. See
+# tools/weapon_spec_probe.c for why each of those is worth a check.
+SPEC_PROBE := bin/weapon_spec_probe
+SPEC_PROBE_SRCS := tools/weapon_spec_probe.c src/gameplay/weapon_spec.c \
+              src/gameplay/weapon_specs.c src/gameplay/viewmodel_pose.c \
+              src/gameplay/reload_sequence.c src/gameplay/sights.c
+
+.PHONY: all build clean run probe bodyprobe deathprobe specprobe
 
 all: $(TARGET)
 
@@ -97,6 +106,13 @@ bodyprobe: $(BODY_PROBE_SRCS)
 	    -o $(BODY_PROBE) -lm
 	./$(BODY_PROBE)
 
+# Run from the project root, like the others.
+specprobe: $(SPEC_PROBE_SRCS)
+	@mkdir -p bin
+	$(PROBE_CC) -Wall -Wextra -std=c11 -O1 $(CPPFLAGS) $(SPEC_PROBE_SRCS) \
+	    -o $(SPEC_PROBE) -lm
+	./$(SPEC_PROBE)
+
 # Run from the project root, like the other two.
 deathprobe: $(DEATH_PROBE_SRCS)
 	@mkdir -p bin
@@ -105,6 +121,7 @@ deathprobe: $(DEATH_PROBE_SRCS)
 	./$(DEATH_PROBE)
 
 clean:
-	rm -rf obj $(TARGET) $(PROBE) $(BODY_PROBE) $(DEATH_PROBE) $(BUILD_DIR)
+	rm -rf obj $(TARGET) $(PROBE) $(BODY_PROBE) $(DEATH_PROBE) \
+	    $(SPEC_PROBE) $(BUILD_DIR)
 
 -include $(DEPS)

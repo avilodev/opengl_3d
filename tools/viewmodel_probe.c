@@ -31,6 +31,19 @@
 #include <string.h>
 #include <stdlib.h>
 
+/* This probe poses guns and only guns, so it takes the class half once and
+   refuses outright if it is missing rather than testing for it at every read.
+   A viewmodel check running against a weapon with no barrel is not a failing
+   check, it is a check that was handed the wrong weapon. */
+static const FirearmSpec* firearm_of(const WeaponSpec* spec) {
+    const FirearmSpec* gun = weapon_spec_firearm(spec);
+    if (!gun) {
+        printf("   FAIL %s has no gun half; this probe needs one\n", spec->name);
+        exit(1);
+    }
+    return gun;
+}
+
 static int failures = 0;
 static void check(const char* what, float got, float want, float tol) {
     int ok = fabsf(got - want) <= tol;
@@ -71,7 +84,7 @@ static void check_pose_matches_gl(const WeaponSpec* spec) {
     printf("\n1. a point off the pose lands where GL draws it (%s)\n",
            spec->name);
     const float local[3][3] = {
-        {0.0f, spec->muzzle_up, -spec->muzzle_forward},
+        {0.0f, firearm_of(spec)->muzzle_up, -firearm_of(spec)->muzzle_forward},
         {0.0f, weapon_spec_sight_height(spec), -weapon_spec_sight_forward(spec)},
         {spec->grip_left[0], spec->grip_left[1], spec->grip_left[2]},
     };
@@ -121,7 +134,7 @@ static void check_no_visible_change(const WeaponSpec* spec) {
                                    -weapon_spec_sight_height(spec), ads), 1e-6f);
         snprintf(label, sizeof label, "z at ads %.2f", ads);
         check(label, pose.z, -spec->view_forward -
-                             spec->view_ads_forward * ads, 1e-6f);
+                             firearm_of(spec)->view_ads_forward * ads, 1e-6f);
         snprintf(label, sizeof label, "hip cant at ads %.2f", ads);
         check(label, pose.yaw, -3.0f * (1.0f - ads), 1e-6f);
     }
@@ -263,7 +276,7 @@ static int check_arms(const WeaponSpec* spec, const SkinnedModel* model,
     report(&rig, "sprint, own placement", targets, sprint, f_sprint);
 
     pose_targets(spec, 0.0f, 1.0f, targets);
-    int f_ads = arm_placement_solve(&rig, targets, spec->view_ads_fov * 0.5f,
+    int f_ads = arm_placement_solve(&rig, targets, firearm_of(spec)->view_ads_fov * 0.5f,
                                     &ads);
     report(&rig, "aimed, own placement", targets, ads, f_ads);
 
@@ -571,7 +584,7 @@ static void check_dropped_mag(const WeaponSpec* spec) {
     /* Reported against the moment the hand let go, not against the start of the
        reload, or the number reads as a magazine hanging in the air for most of
        a second. */
-    float let_go = weapon_spec_reload_sequence(spec)->drop_at * spec->reload_time;
+    float let_go = weapon_spec_reload_sequence(spec)->drop_at * firearm_of(spec)->reload_time;
     printf("   %s it left the hand %.2fs in and reached the floor %.2fs later\n",
            landed ? "ok  " : "FAIL", let_go, landed_at - let_go);
 
@@ -1147,8 +1160,8 @@ static void check_reload_shape(const WeaponSpec* spec) {
        In is a fit, and it is not. This is the asymmetry the track did not have
        when every segment ran at the same length. */
     float out_span = (track->drop_at - track->keys[touched].at) *
-                     spec->reload_time;
-    float in_span = (track->tap_at - track->keys[empty].at) * spec->reload_time;
+                     firearm_of(spec)->reload_time;
+    float in_span = (track->tap_at - track->keys[empty].at) * firearm_of(spec)->reload_time;
     printf("   the spent one is out in %.2fs; the fresh one is in and "
            "confirmed %.2fs after the hand is empty\n", out_span, in_span);
     expect(in_span > out_span * 1.5f,
@@ -1695,7 +1708,7 @@ static int wrist_in_gun_frame(const WeaponSpec* spec, const SkinnedModel* model,
                                               : spec->grip_right, grips[a]);
     ArmPlacement p = {0, 0};
     if (!arm_placement_solve(rig, grips,
-                             (ads > 0.5f ? spec->view_ads_fov : spec->view_fov)
+                             (ads > 0.5f ? weapon_spec_view_ads_fov(spec) : spec->view_fov)
                              * 0.5f, &p))
         return 0;
 

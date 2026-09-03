@@ -34,25 +34,33 @@ typedef enum {
     WEAPON_MODEL_RIFLE
 } WeaponModelKind;
 
+/* What kind of weapon this is, which is the one branch the rest of the system
+   is allowed to take on a weapon. Everything else a class needs is on the half
+   this points at, so adding a third is a struct and a case in the handful of
+   places that switch here - not a field on every weapon that most weapons
+   leave zero.
+
+   The field is `kind` rather than `class` for the reason every other enum in
+   this file is: `class` is a C++ keyword, and a header that cannot be included
+   from C++ is a header with a trap in it. */
 typedef enum {
-    /* Two hands at two places: one closed on the grip, the other out on a
-       handguard or foregrip. A rifle. */
-    WEAPON_HOLD_TWO_POINT,
-    /* Two hands at one place, the support hand wrapped around the firing one.
-       A pistol, which has no forward furniture to hold. */
-    WEAPON_HOLD_HANDS_TOGETHER
-} WeaponHoldKind;
+    WEAPON_CLASS_FIREARM,
+    WEAPON_CLASS_MELEE
+} WeaponClass;
 
+/* Everything that is true of a gun and of nothing else.
+
+   Lifted out of WeaponSpec unchanged. A katana has no magazine, no cone and no
+   rail, and leaving those on the common struct would mean every melee weapon
+   states a magazine size of zero and every reader has to wonder whether the
+   zero means something. Behind a pointer, a weapon that is not a gun does not
+   answer the question at all - which is the difference between a field that is
+   empty and a field that does not apply. */
 typedef struct {
-    const char* name;
-
     /* --- ammunition and rate --- */
     int magazine;
     float fire_interval;        /* seconds between rounds */
     float reload_time;
-    /* Flat at every distance. No weapon in this game has falloff. */
-    float damage;
-    float range;
 
     /* --- the cone ---
        Sits at `bloom_min`, grows by `bloom_per_shot` per round to `bloom_max`,
@@ -85,23 +93,71 @@ typedef struct {
     float rail_height;
     float rail_forward;
 
+    /* How far aiming pulls the gun back toward the eye. A property of the hold
+       and not of the optic: a holographic sight has effectively unlimited eye
+       relief, so what sets the distance from the eye to the glass is whether
+       the gun is shouldered or held out at arm's length. */
+    float view_ads_forward;
+    float view_ads_fov;
+
+    /* The barrel's tip within the model, where the flash is drawn and a tracer
+       starts. Forward is positive, toward what the player is looking at. */
+    float muzzle_up;
+    float muzzle_forward;
+
+    /* --- the detachable magazine ---
+       Material names, and NULL on a gun whose magazine does not come out on
+       screen. `magazine_part` is the box itself and `rounds_part` the
+       cartridges visible in it, stated apart because a spent magazine leaves
+       without them and a fresh one arrives carrying them - which is most of
+       what says a magazine was CHANGED rather than refilled where it sat, and
+       costs nothing, since they are already separate materials on the mesh.
+
+       Naming these is what lets the reload draw the magazine somewhere other
+       than on the gun. Without them the renderer would have to know that this
+       particular rifle keeps its magazine in a material called M4Mag_Mat,
+       which is exactly the knowledge that belongs on the spec. */
+    const char* magazine_part;
+    const char* rounds_part;
+} FirearmSpec;
+
+/* Defined in full once there is a melee weapon to define it for. Forward
+   declared here so WeaponSpec can point at one before then. */
+struct MeleeSpec;
+
+typedef enum {
+    /* Two hands at two places: one closed on the grip, the other out on a
+       handguard or foregrip. A rifle. */
+    WEAPON_HOLD_TWO_POINT,
+    /* Two hands at one place, the support hand wrapped around the firing one.
+       A pistol, which has no forward furniture to hold. */
+    WEAPON_HOLD_HANDS_TOGETHER
+} WeaponHoldKind;
+
+typedef struct {
+    const char* name;
+
+    /* What kind of weapon this is, and the half that says what that means.
+       Exactly one of the two pointers is non-NULL, and it is the one `kind`
+       names - checked by tools/weapon_spec_probe.c, because a spec that gets
+       this wrong is a null dereference at the first shot rather than a
+       compile error. Reach them through weapon_spec_firearm and
+       weapon_spec_melee rather than by reading the pointer. */
+    WeaponClass kind;
+    const FirearmSpec* firearm;
+    const struct MeleeSpec* melee;
+
+    /* Flat at every distance. No weapon in this game has falloff. */
+    float damage;
+    float range;
+
     /* --- the viewmodel ---
        Camera-space offsets: +x right, +y up, -z forward. */
     WeaponModelKind model;
     float view_right;
     float view_down;
     float view_forward;
-    /* How far aiming pulls the gun back toward the eye. A property of the hold
-       and not of the optic: a holographic sight has effectively unlimited eye
-       relief, so what sets the distance from the eye to the glass is whether
-       the gun is shouldered or held out at arm's length. */
-    float view_ads_forward;
     float view_fov;
-    float view_ads_fov;
-    /* The barrel's tip within the model, where the flash is drawn and a tracer
-       starts. Forward is positive, toward what the player is looking at. */
-    float muzzle_up;
-    float muzzle_forward;
 
     /* --- the hold ---
        Where the hands close on this gun, in the model's own space: +x right,
@@ -140,20 +196,6 @@ typedef struct {
        an asset that came back with its materials renamed. */
     const char* hidden_parts[WEAPON_MAX_HIDDEN_PARTS];
 
-    /* --- the detachable magazine ---
-       Material names again, and NULL on a gun whose magazine does not come out
-       on screen. `magazine_part` is the box itself and `rounds_part` the
-       cartridges visible in it, stated apart because a spent magazine leaves
-       without them and a fresh one arrives carrying them - which is most of
-       what says a magazine was CHANGED rather than refilled where it sat, and
-       costs nothing, since they are already separate materials on the mesh.
-
-       Naming these is what lets the reload draw the magazine somewhere other
-       than on the gun. Without them the renderer would have to know that this
-       particular rifle keeps its magazine in a material called M4Mag_Mat, which
-       is exactly the knowledge that belongs on the spec. */
-    const char* magazine_part;
-    const char* rounds_part;
 } WeaponSpec;
 
 /* Fast, light, and forgiving: the sidearm this project started with. Kept
@@ -162,6 +204,14 @@ extern const WeaponSpec WEAPON_SPEC_AUTO_PISTOL;
 
 /* The issued weapon. Slower and heavier, and unmagnified by choice. */
 extern const WeaponSpec WEAPON_SPEC_ASSAULT_RIFLE;
+
+/* The gun half, or NULL on a weapon that is not a gun.
+
+   Callers that already know perfectly well they are holding a firearm still
+   come through here rather than reading spec->firearm, so that the one place
+   which would crash on a melee weapon is the one place that gets the check.
+   Every reader of a gun-only number starts with this and a NULL test. */
+const FirearmSpec* weapon_spec_firearm(const WeaponSpec* spec);
 
 /* The mount height: the gun's rail above its bore plus the sight's reticle
    above its rail seat. Aiming drops the gun by exactly this, which is what
@@ -178,6 +228,16 @@ float weapon_spec_sight_forward(const WeaponSpec* spec);
 /* The field of view aiming settles at. An unmagnified sight leaves it alone,
    which is not a special case but the common one. */
 float weapon_spec_ads_fov(const WeaponSpec* spec);
+
+/* The VIEWMODEL's own projection when aimed - a different number from the one
+   above, which is the world's. The weapon is drawn through its own frustum, so
+   how much of the screen a 36mm window covers is decided here and not by what
+   the world is doing.
+
+   A weapon that does not aim answers with its resting field of view, so a
+   caller can lerp toward it on an `ads` that never leaves zero and get the
+   rest pose back rather than a hole. */
+float weapon_spec_view_ads_fov(const WeaponSpec* spec);
 
 /* How long the sight takes to come up. The glass's weight, so it travels with
    the optic between guns. */
