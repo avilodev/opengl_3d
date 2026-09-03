@@ -12,12 +12,18 @@
    right, +y up, -z forward - so a caller that has set the transform draws it
    with no correction of its own. What each one's origin is depends on what it
    is for: a gun's sits on the bore line at the back of the receiver, because
-   that is what a muzzle flash hangs off, and an optic's sits on its reticle,
-   because that is what an eye lines up with. tools/fbx_to_glb.py and
-   tools/scope_to_glb.py are what put them in those frames. */
+   that is what a muzzle flash hangs off; a sword's sits in the middle of its
+   grip, because a sword has no bore and what it hangs off is the hand; and an
+   optic's sits on its reticle, because that is what an eye lines up with. The
+   importers in tools/ are what put them in those frames.
 
-/* Draws the mesh for `kind` about the origin. Non-zero when it drew; zero when
-   that weapon has no mesh, or the file would not load, and the caller should
+   Which file a weapon draws is the weapon's own business - it is on the spec -
+   so a new one arrives here without this file learning anything about it. That
+   was not always true: the path used to be a #define reached through an enum,
+   and adding the first sword meant editing this file to say so. */
+
+/* Draws `spec`'s own mesh about the origin. Non-zero when it drew; zero when
+   the weapon names no mesh, or the file would not load, and the caller should
    fall back to the boxes it drew before there was one.
 
    Loads on the first call, which has to be one with a current GL context. */
@@ -25,12 +31,12 @@
    NULL for all of it - see WeaponSpec.hidden_parts. Taken as an argument rather
    than read off the model, because the loaded meshes are cached and shared by
    path: what one gun leaves off is not a property of the file. */
-int weapon_model_draw(WeaponModelKind kind, const char* const* hidden_parts);
+int weapon_model_draw(const WeaponSpec* spec, const char* const* hidden_parts);
 
 /* Only the named parts of the same mesh, at the caller's current transform.
    What this exists for is the magazine during a reload: the gun is drawn
    without it, and it is drawn again here wherever the hand has taken it. */
-int weapon_model_draw_only(WeaponModelKind kind, const char* const* parts);
+int weapon_model_draw_only(const WeaponSpec* spec, const char* const* parts);
 
 /* The same, for the optic a weapon carries, drawn about its reticle. The
    caller has already put the transform where the reticle goes, which for the

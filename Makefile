@@ -65,7 +65,9 @@ DEATH_PROBE_SRCS := tools/death_probe.c src/gameplay/combatant.c \
 SPEC_PROBE := bin/weapon_spec_probe
 SPEC_PROBE_SRCS := tools/weapon_spec_probe.c src/gameplay/weapon_spec.c \
               src/gameplay/weapon_specs.c src/gameplay/viewmodel_pose.c \
-              src/gameplay/reload_sequence.c src/gameplay/sights.c
+              src/gameplay/reload_sequence.c src/gameplay/sights.c \
+              src/render/static_model_glb.c src/render/glb.c \
+              src/render/stb_image.c src/core/json.c
 
 .PHONY: all build clean run probe bodyprobe deathprobe specprobe
 

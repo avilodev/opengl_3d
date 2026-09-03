@@ -1,6 +1,8 @@
 #include "gameplay/weapon_spec.h"
 #include "gameplay/sight_spec.h"
 
+#include <stddef.h>
+
 /* The tuning surface for the guns themselves. A number that changes how a
    weapon feels belongs in this file. */
 
@@ -48,7 +50,8 @@ const WeaponSpec WEAPON_SPEC_AUTO_PISTOL = {
     .damage = 18.0f,
     .range = 300.0f,
 
-    .model = WEAPON_MODEL_AUTO_PISTOL,
+    /* No mesh yet: the sidearm is still drawn from boxes. */
+    .mesh_path = NULL,
     .view_right = 0.22f,
     .view_down = 0.19f,
     .view_forward = 0.46f,
@@ -147,7 +150,7 @@ const WeaponSpec WEAPON_SPEC_ASSAULT_RIFLE = {
     .damage = 47.0f,
     .range = 300.0f,
 
-    .model = WEAPON_MODEL_RIFLE,
+    .mesh_path = "models/Guns/M4/m4_carbine.glb",
     /* The gun on screen, about 1.6x the size it used to be. Two thirds of
        that is the narrower viewmodel projection and one third is the gun
        sitting closer to the eye, because neither would do it alone: this

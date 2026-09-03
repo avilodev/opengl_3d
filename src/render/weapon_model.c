@@ -17,12 +17,6 @@ enum { MODEL_UNTRIED, MODEL_LOADED, MODEL_MISSING };
    enumerator, which is what it used to cost. */
 #define WEAPON_MESH_SLOTS 8
 
-/* The mesh the rifle slot draws, in one place so swapping what is in the
-   player's hands is one line. Pointed at the katana while it is being looked
-   at; the carbine is a comment away. */
-#define RIFLE_MESH "models/Swords/Katana/katana.glb"
-/* #define RIFLE_MESH "models/Guns/M4/m4_carbine.glb" */
-
 typedef struct {
     const char* path;                /* null while the slot is free */
     StaticModel model;
@@ -91,19 +85,17 @@ void weapon_model_shutdown(void) {
     }
 }
 
-int weapon_model_draw(WeaponModelKind kind, const char* const* hidden_parts) {
-    /* The sidearm has no mesh yet. It keeps the boxes, which is why the
-       fallback is a return value rather than a silent nothing. */
-    if (kind != WEAPON_MODEL_RIFLE) return 0;
-    const StaticModel* model = mesh(RIFLE_MESH);
+int weapon_model_draw(const WeaponSpec* spec, const char* const* hidden_parts) {
+    /* A weapon with no mesh keeps the boxes, which is why the fallback is a
+       return value rather than a silent nothing. */
+    const StaticModel* model = spec ? mesh(spec->mesh_path) : NULL;
     if (!model) return 0;
     static_model_draw_except(model, hidden_parts);
     return 1;
 }
 
-int weapon_model_draw_only(WeaponModelKind kind, const char* const* parts) {
-    if (kind != WEAPON_MODEL_RIFLE) return 0;
-    const StaticModel* model = mesh(RIFLE_MESH);
+int weapon_model_draw_only(const WeaponSpec* spec, const char* const* parts) {
+    const StaticModel* model = spec ? mesh(spec->mesh_path) : NULL;
     if (!model) return 0;
     static_model_draw_only(model, parts);
     return 1;

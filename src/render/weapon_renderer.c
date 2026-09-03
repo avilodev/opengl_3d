@@ -111,7 +111,7 @@ static void draw_dropped_mags(const Weapon* weapon) {
            by its own half-depth to turn about its middle instead of swinging
            around a point above its mouth. */
         glTranslatef(0.0f, WEAPON_MAG_REST_HEIGHT, 0.0f);
-        weapon_model_draw_only(spec->model, parts);
+        weapon_model_draw_only(spec, parts);
         glPopMatrix();
     }
 }
@@ -673,7 +673,7 @@ static void draw_loose_magazine(const Weapon* weapon, const Mat4* gun) {
        tips out of it. Applied after the roll so the two compose as a wrist
        does: the body swings out sideways and tips at the same time. */
     glRotatef(lerpf(from->mag_pitch, to->mag_pitch, t), 1, 0, 0);
-    weapon_model_draw_only(spec->model, parts);
+    weapon_model_draw_only(spec, parts);
     glPopMatrix();
 }
 
@@ -697,8 +697,16 @@ static void draw_receiver(const Weapon* weapon) {
         merged[n] = NULL;
         hidden = merged;
     }
-    if (!weapon_model_draw(weapon->spec->model, hidden)) {
-        if (weapon->spec->model == WEAPON_MODEL_RIFLE) draw_body_rifle();
+    if (!weapon_model_draw(weapon->spec, hidden)) {
+        /* The boxes, for a weapon whose mesh is missing or not authored yet.
+           Picked off the hold rather than off a model enum, because the hold is
+           the thing that actually differs between the two shapes drawn here -
+           a gun held at two points is a long one, and one held at a single
+           point is a sidearm. There are no boxes for a sword: it arrived with
+           its mesh, and a box standing in for a katana would read as a bug
+           rather than as a placeholder. */
+        if (weapon->spec->kind != WEAPON_CLASS_FIREARM) { /* nothing to draw */ }
+        else if (weapon->spec->hold == WEAPON_HOLD_TWO_POINT) draw_body_rifle();
         else draw_body_auto_pistol();
     }
     /* The optic ships as its own mesh and is bolted on here rather than baked

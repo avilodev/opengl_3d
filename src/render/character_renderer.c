@@ -56,7 +56,8 @@ static void draw_held_weapon(const SkinnedModel* model, const Pose* pose) {
        weapon, so it carries it built the same way. Taking the list from the
        spec rather than repeating it here is what stops the third-person gun
        growing furniture the first-person one has had removed. */
-    weapon_model_draw(WEAPON_MODEL_RIFLE, WEAPON_SPEC_ASSAULT_RIFLE.hidden_parts);
+    weapon_model_draw(&WEAPON_SPEC_ASSAULT_RIFLE,
+                      WEAPON_SPEC_ASSAULT_RIFLE.hidden_parts);
     /* And its optic, on the same rail the viewmodel bolts one to. The body
        carries the issued weapon, so it carries the issued weapon's sight -
        taking both from the spec rather than from a second set of numbers here

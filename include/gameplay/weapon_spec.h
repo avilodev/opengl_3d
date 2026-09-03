@@ -29,11 +29,6 @@
    spec and nothing else. */
 #define WEAPON_MAX_HIDDEN_PARTS 4
 
-typedef enum {
-    WEAPON_MODEL_AUTO_PISTOL,
-    WEAPON_MODEL_RIFLE
-} WeaponModelKind;
-
 /* What kind of weapon this is, which is the one branch the rest of the system
    is allowed to take on a weapon. Everything else a class needs is on the half
    this points at, so adding a third is a struct and a case in the handful of
@@ -151,9 +146,23 @@ typedef struct {
     float damage;
     float range;
 
+    /* The weapon's own mesh, in the viewmodel's axes and in metres, or NULL
+       for a weapon that has none yet and falls back to the boxes.
+
+       Here rather than behind an enum in the renderer because an enum standing
+       in for a file path is a code edit every time an artist hands one over -
+       which is exactly what the first sword cost, and exactly the kind of
+       change this file exists to make unnecessary.
+
+       What the mesh's ORIGIN is depends on the class. A gun's sits on the bore
+       at the back of the receiver, because that is what a muzzle flash and a
+       tracer hang off; a sword's sits in the middle of its grip, because a
+       sword has no bore and what it hangs off is the hand. Either way it is
+       the frame every other number on this spec is measured in. */
+    const char* mesh_path;
+
     /* --- the viewmodel ---
        Camera-space offsets: +x right, +y up, -z forward. */
-    WeaponModelKind model;
     float view_right;
     float view_down;
     float view_forward;
