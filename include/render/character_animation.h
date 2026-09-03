@@ -63,6 +63,10 @@ typedef struct {
     int role;                        /* what is playing now */
     float time;                      /* seconds into it */
     float hold;                      /* seconds a one-shot still owns the body */
+    /* A clip outside the locomotion roles that owns the body right now - a
+       swing, a draw - or -1 for none. Read in place of the role's clip, so
+       there is one playhead and not two. */
+    int oneshot_clip;
 
     /* A cross-fade blends out of the pose the body was in at the moment the
        clip changed, rather than out of the old clip still running. One
@@ -209,6 +213,13 @@ void character_animation_init(CharacterAnimation* animation,
    frame's flags against last frame's. A body whose state arrives over a wire
    does not get every frame, and an edge inferred from the two frames either
    side of a dropped packet is a jump or a landing that never plays. */
+/* Plays a clip by index for `hold` seconds, through the same snapshot and
+   cross-fade a jump takes. Hands the body back to the state's own role when
+   the hold expires. */
+void character_animation_play_oneshot(CharacterAnimation* animation,
+                                      const SkinnedModel* model,
+                                      int clip_index, float hold_seconds);
+
 void character_animation_update(CharacterAnimation* animation, const SkinnedModel* model,
                                 const CharacterVisualState* state, float delta_time);
 

@@ -116,6 +116,27 @@ typedef struct {
     const char* rounds_part;
 } FirearmSpec;
 
+/* One attack: the clip it plays, the window inside that clip where the blade
+   is live, what it hits for, and where a further input inside the window takes
+   it. A chain is this table pointing at itself, which is why a combo needs no
+   state machine of its own - the attack the player is in IS the state. */
+#define MELEE_ATTACK_MAX 6
+
+typedef struct {
+    const char* clip;
+    /* Played when the attack finishes without a follow-up. NULL for one that
+       recovers into the hold pose instead - only A and B ship a recovery, and
+       C is the end of the chain. */
+    const char* recovery;
+    /* The live window, 0 to 1 of the clip's own duration. A block states
+       active_to below active_from, which is what says it has no live window at
+       all rather than a zero-length one at the start. */
+    float active_from, active_to;
+    float damage_scale;
+    /* Which attack a further input inside the window advances to, or -1. */
+    int next;
+} MeleeAttack;
+
 /* Everything that is true of a melee weapon and of nothing else.
 
    The blade segment is the whole of what a swing means geometrically: two
@@ -139,6 +160,13 @@ typedef struct MeleeSpec {
        from the koiguchi. A curved blade leaves along its axis and cannot come
        out sideways, which is what makes this one number rather than a pose. */
     float sheathed_depth;
+
+    /* What this weapon can do, and the three ways in. The entry points are
+       indices into the table rather than a second copy of the data, so a
+       retuned attack is retuned once. */
+    MeleeAttack attacks[MELEE_ATTACK_MAX];
+    int attack_count;
+    int light_attack, heavy_attack, block_attack;
 
     /* Pulls the clip-driven arms into frame. Those clips were staged for a
        camera behind the body; in first person the same motion needs bringing

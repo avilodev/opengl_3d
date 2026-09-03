@@ -46,15 +46,52 @@ static void check_min(const char* what, float got, float least) {
    weapon that is still drawn, still fires, and still hits. Nothing errors, and
    the only symptom is a soldier walking around with a rifle floating beside a
    swinging arm. */
+static void expect(int ok, const char* what) {
+    if (!ok) ++failures;
+    printf("  %s %s\n", ok ? "ok  " : "FAIL", what);
+}
+
+static void check_clip(const SkinnedModel* model, const char* name) {
+    expect(name && skinned_model_find_clip(model, name) >= 0,
+           name ? name : "(unnamed clip)");
+}
+
 static void check_clip_set(const SkinnedModel* model, const WeaponSpec* spec) {
     printf("\n%s clip set\n", spec->name);
-    for (int i = 0; i < CHARACTER_AIM_COUNT; ++i) {
-        const char* name = spec->clips.aim[i];
-        int ok = name && skinned_model_find_clip(model, name) >= 0;
-        if (!ok) ++failures;
-        printf("  %s %s\n", ok ? "ok  " : "FAIL",
-               name ? name : "(unnamed aim clip)");
+    for (int i = 0; i < CHARACTER_AIM_COUNT; ++i)
+        check_clip(model, spec->clips.aim[i]);
+
+    const MeleeSpec* melee = weapon_spec_melee(spec);
+    if (!melee) return;
+
+    /* Every attack the table names, and every window it states. A clip that
+       resolves to -1 is a swing that does not happen and does not complain; a
+       window outside 0..1 is a blade that is live before the clip starts or
+       after it ends; and a `next` off the end of the table is a combo that
+       reads garbage on the third hit, which is the one of the three that can
+       corrupt rather than merely disappoint. */
+    for (int a = 0; a < melee->attack_count; ++a) {
+        const MeleeAttack* attack = &melee->attacks[a];
+        check_clip(model, attack->clip);
+        if (attack->recovery) check_clip(model, attack->recovery);
+        if (attack->active_to >= attack->active_from) {
+            expect(attack->active_from >= 0.0f && attack->active_to <= 1.0f,
+                   "the live window lies inside the clip");
+            expect(attack->active_to > attack->active_from,
+                   "the live window has width");
+        }
+        expect(attack->next == -1 ||
+               (attack->next >= 0 && attack->next < melee->attack_count),
+               "next is -1 or an attack that exists");
     }
+    expect(melee->attack_count > 0 && melee->attack_count <= MELEE_ATTACK_MAX,
+           "the attack table is neither empty nor overfull");
+    expect(melee->light_attack >= 0 && melee->light_attack < melee->attack_count,
+           "the light attack exists");
+    expect(melee->heavy_attack >= 0 && melee->heavy_attack < melee->attack_count,
+           "the heavy attack exists");
+    expect(melee->block_attack >= 0 && melee->block_attack < melee->attack_count,
+           "the block exists");
 }
 
 /* A standing, grounded body looking straight down its own forward, which is

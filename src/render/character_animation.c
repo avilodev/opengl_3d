@@ -370,6 +370,7 @@ void character_animation_init(CharacterAnimation* animation,
                               const SkinnedModel* model,
                               const WeaponClipSet* clips) {
     memset(animation, 0, sizeof *animation);
+    animation->oneshot_clip = -1;
     for (int i = 0; i < CHARACTER_CLIP_COUNT; ++i)
         animation->clip[i] = skinned_model_find_clip(model, ROLES[i].name);
     /* A body holding nothing resolves no aim clips, which leaves the layer
@@ -586,7 +587,10 @@ static float playback_rate(const CharacterAnimation* animation,
 
 static void switch_role(CharacterAnimation* animation, const SkinnedModel* model,
                         int role, float hold) {
-    if (role == animation->role) return;
+    /* A one-shot is playing something no role names, so a body coming out of a
+       swing back into the role it was already in is a real change and has to
+       fade rather than early-return into a frozen last frame. */
+    if (role == animation->role && animation->oneshot_clip < 0) return;
     /* Snapshot the clip the body is playing, cross-fade and all, so the new one
        fades in from where the old one had got to rather than from its own first
        frame - and a switch that lands mid-fade carries the fade it interrupted
@@ -606,8 +610,28 @@ static void switch_role(CharacterAnimation* animation, const SkinnedModel* model
     animation->fading = 1;
     animation->fade = FADE_SECONDS;
     animation->role = role;
+    animation->oneshot_clip = -1;
     animation->time = 0.0f;
     animation->hold = hold;
+}
+
+/* Plays a clip that is not one of the locomotion roles, for `hold` seconds,
+   through exactly the path a jump takes: the same snapshot, the same
+   cross-fade, the same hold that expires back into whatever the state asks
+   for. There is deliberately no second playhead - a swing is a clip the body
+   is playing, and one clock is what keeps a mid-swing landing from running two
+   animations at once and blending neither of them out. */
+void character_animation_play_oneshot(CharacterAnimation* animation,
+                                      const SkinnedModel* model,
+                                      int clip_index, float hold_seconds) {
+    if (!animation || !model || clip_index < 0) return;
+    if (animation->oneshot_clip == clip_index) return;
+    compose_base(animation, model, &animation->fade_from);
+    animation->fading = 1;
+    animation->fade = FADE_SECONDS;
+    animation->oneshot_clip = clip_index;
+    animation->time = 0.0f;
+    animation->hold = hold_seconds;
 }
 
 void character_animation_update(CharacterAnimation* animation, const SkinnedModel* model,
@@ -1068,12 +1092,16 @@ static void apply_body_twist(const CharacterAnimation* animation,
    role switch snapshots - so a fade only ever carries clip against clip. */
 static void compose_base(const CharacterAnimation* animation,
                          const SkinnedModel* model, Pose* out) {
-    int clip = animation->clip[animation->role];
+    int clip = animation->oneshot_clip >= 0 ? animation->oneshot_clip
+                                            : animation->clip[animation->role];
 
     /* Looping is the sampler's caller's job, which is here: a clip that runs
-       out holds its last frame, and a role that loops wraps its time instead. */
+       out holds its last frame, and a role that loops wraps its time instead.
+       A one-shot never loops - it holds its last frame and then expires, which
+       is the whole difference between a swing and a walk cycle. */
     float time = animation->time;
-    if (clip >= 0 && ROLES[animation->role].hold == 0.0f) {
+    if (clip >= 0 && animation->oneshot_clip < 0 &&
+        ROLES[animation->role].hold == 0.0f) {
         float duration = model->clips[clip].duration;
         /* Reversed playback walks the clock backwards, and fmodf keeps the
            sign of its left operand, so a negative time has to be brought back

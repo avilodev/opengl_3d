@@ -208,6 +208,27 @@ static const MeleeSpec KATANA_MELEE = {
        deep, so a sheathed sword is in as far as it goes. */
     .sheathed_depth = 0.79f,
 
+    .attacks = {
+        /* 0-2: the light chain. The active windows are the middle of each
+           clip - a swing is live while the edge is moving, not while the arms
+           are winding up or following through. Set by eye against the clip
+           and checked by tools/melee_probe.c. */
+        { "Sword_Regular_A", "Sword_Regular_A_Rec", 0.30f, 0.55f, 1.0f,  1 },
+        { "Sword_Regular_B", "Sword_Regular_B_Rec", 0.28f, 0.52f, 1.0f,  2 },
+        /* C ends the chain. The library ships no Sword_Regular_C_Rec, which
+           is why this one recovers into the hold pose rather than into a clip
+           that does not exist. */
+        { "Sword_Regular_C", NULL,                  0.32f, 0.60f, 1.2f, -1 },
+        /* 3: the heavy. Slower to arrive and worth more. */
+        { "Sword_Heavy_Combo", NULL, 0.40f, 0.70f, 2.0f, -1 },
+        /* 4: the block. A hold, not a swing: active_to below active_from is
+           what says it has no live window at all, rather than a zero-length
+           one at the start that a rounding error could open. */
+        { "Sword_Block", NULL, 1.0f, 0.0f, 0.0f, -1 },
+    },
+    .attack_count = 5,
+    .light_attack = 0, .heavy_attack = 3, .block_attack = 4,
+
     .view_clip_offset = { 0.0f, 0.0f, 0.0f },   /* tuned in Task 7 */
 };
 
