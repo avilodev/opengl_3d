@@ -145,7 +145,11 @@ static void draw_box_body(const CharacterVisualState* state) {
 static int instance_ready(CharacterInstance* instance, const SkinnedModel* model) {
     if (instance->ready) return 1;
     if (!skinned_instance_init(&instance->skin, model)) return 0;
-    character_animation_init(&instance->animation, model);
+    /* The hold comes from what this body is carrying. A body with no weapon
+       passes no clip set and gets no aim layer, which is the right look for
+       empty hands rather than a fallback standing in for one. */
+    character_animation_init(&instance->animation, model,
+                             instance->weapon ? &instance->weapon->clips : NULL);
     skinned_model_bind_pose(model, &instance->pose);
     instance->ready = 1;
     return 1;

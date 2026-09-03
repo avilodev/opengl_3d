@@ -211,15 +211,6 @@ static const struct {
    over about a second, which is the shuffle a standing player does. */
 #define FACING_LEG_SETTLE_RATE 60.0f
 
-/* The aim layer's three poses. The library authored them for a pistol, which
-   is the closest thing in it to a rifle: both hands meet at the grip, and on
-   this model they land on the magwell rather than out on the handguard. */
-static const char* AIM_CLIPS[CHARACTER_AIM_COUNT] = {
-    [CHARACTER_AIM_DOWN]    = "Pistol_Aim_Down",
-    [CHARACTER_AIM_NEUTRAL] = "Pistol_Aim_Neutral",
-    [CHARACTER_AIM_UP]      = "Pistol_Aim_Up",
-};
-
 /* The bone the layer takes over from, and the two it lowers the gun with. */
 #define AIM_UPPER_ROOT "spine_02"
 #define AIM_ARM_ROOT_L "clavicle_l"
@@ -375,12 +366,18 @@ static void resolve_twist_bones(CharacterAnimation* animation, const SkinnedMode
         if (animation->twist_node[i] >= 0) animation->twist_count++;
 }
 
-void character_animation_init(CharacterAnimation* animation, const SkinnedModel* model) {
+void character_animation_init(CharacterAnimation* animation,
+                              const SkinnedModel* model,
+                              const WeaponClipSet* clips) {
     memset(animation, 0, sizeof *animation);
     for (int i = 0; i < CHARACTER_CLIP_COUNT; ++i)
         animation->clip[i] = skinned_model_find_clip(model, ROLES[i].name);
+    /* A body holding nothing resolves no aim clips, which leaves the layer
+       weightless and the locomotion clips alone with the arms - which is what
+       empty hands should look like anyway. */
     for (int i = 0; i < CHARACTER_AIM_COUNT; ++i)
-        animation->aim_clip[i] = skinned_model_find_clip(model, AIM_CLIPS[i]);
+        animation->aim_clip[i] = clips && clips->aim[i]
+            ? skinned_model_find_clip(model, clips->aim[i]) : -1;
     /* A rig without these bones gets a mask that moves nothing, so the layer
        drops out and the body falls back to the locomotion clips alone. */
     skinned_model_mask_subtree(model, AIM_UPPER_ROOT, &animation->upper);

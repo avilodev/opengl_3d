@@ -146,6 +146,19 @@ typedef struct MeleeSpec {
     float view_clip_offset[3];
 } MeleeSpec;
 
+/* Which clips a body plays while holding this weapon. Names and not indices,
+   resolved once against whatever rig is worn - the same bargain hidden_parts
+   makes, for the same reason: an index is whatever order an exporter wrote and
+   a name survives a re-export.
+
+   The aim clips are a mask laid over the legs, so a body holds its weapon
+   through every locomotion clip without any of them knowing the weapon exists.
+   A sword names one pose three times rather than three: it has no aim pitch,
+   and a special case here would be a branch every rig pays for. */
+typedef struct {
+    const char* aim[3];       /* down, neutral, up - CHARACTER_AIM_* order */
+} WeaponClipSet;
+
 typedef enum {
     /* Two hands at two places: one closed on the grip, the other out on a
        handguard or foregrip. A rifle. */
@@ -230,6 +243,10 @@ typedef struct {
        nothing is reported at load rather than ignored, since the usual cause is
        an asset that came back with its materials renamed. */
     const char* hidden_parts[WEAPON_MAX_HIDDEN_PARTS];
+
+    /* The third-person hold. Read by character_animation_init, which resolves
+       these against the rig the body happens to be wearing. */
+    WeaponClipSet clips;
 
 } WeaponSpec;
 

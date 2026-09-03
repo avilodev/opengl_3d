@@ -42,6 +42,7 @@ PROBE_SRCS := tools/viewmodel_probe.c src/render/arm_placement.c \
 BODY_PROBE := bin/body_probe
 BODY_PROBE_SRCS := tools/body_probe.c src/render/character_animation.c \
               src/render/character_transform.c \
+              src/gameplay/weapon_specs.c src/gameplay/sights.c \
               src/render/skinned_model_glb.c src/render/skinned_pose.c \
               src/render/glb.c src/render/stb_image.c src/core/json.c
 

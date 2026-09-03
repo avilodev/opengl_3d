@@ -17,6 +17,7 @@
 #include "render/character_transform.h"
 #include "render/skinned_model.h"
 #include "gameplay/movement_tuning.h"
+#include "gameplay/weapon_spec.h"
 #include "utils/mat4.h"
 
 #include <math.h>
@@ -37,6 +38,23 @@ static void check_min(const char* what, float got, float least) {
     if (!ok) ++failures;
     printf("  %s %-44s got %+.4f want >= %+.4f\n", ok ? "ok  " : "FAIL", what,
            got, least);
+}
+
+/* Every clip a spec names has to exist in the rig. A name that resolves to -1
+   is a hold that silently does not happen: the aim layer contributes nothing
+   and the body stands there with its arms in the locomotion pose, holding a
+   weapon that is still drawn, still fires, and still hits. Nothing errors, and
+   the only symptom is a soldier walking around with a rifle floating beside a
+   swinging arm. */
+static void check_clip_set(const SkinnedModel* model, const WeaponSpec* spec) {
+    printf("\n%s clip set\n", spec->name);
+    for (int i = 0; i < CHARACTER_AIM_COUNT; ++i) {
+        const char* name = spec->clips.aim[i];
+        int ok = name && skinned_model_find_clip(model, name) >= 0;
+        if (!ok) ++failures;
+        printf("  %s %s\n", ok ? "ok  " : "FAIL",
+               name ? name : "(unnamed aim clip)");
+    }
 }
 
 /* A standing, grounded body looking straight down its own forward, which is
@@ -224,16 +242,20 @@ int main(void) {
         ? CHARACTER_RIG_HEIGHT / (model.max_y - model.min_y) : 1.0f;
 
     CharacterAnimation animation;
-    character_animation_init(&animation, &model);
+    character_animation_init(&animation, &model,
+                             &WEAPON_SPEC_ASSAULT_RIFLE.clips);
 
     const char* BONES[] = {"Head", "hand_r", "foot_l", "foot_r"};
     float upright[4][3], left[4][3], right[4][3];
     for (int b = 0; b < 4; ++b) {
-        character_animation_init(&animation, &model);
+        character_animation_init(&animation, &model,
+                             &WEAPON_SPEC_ASSAULT_RIFLE.clips);
         if (!bone_at(&animation, &model, 0.0f, 0.0f, BONES[b], upright[b])) return 1;
-        character_animation_init(&animation, &model);
+        character_animation_init(&animation, &model,
+                             &WEAPON_SPEC_ASSAULT_RIFLE.clips);
         if (!bone_at(&animation, &model, 1.0f, 0.0f, BONES[b], left[b])) return 1;
-        character_animation_init(&animation, &model);
+        character_animation_init(&animation, &model,
+                             &WEAPON_SPEC_ASSAULT_RIFLE.clips);
         if (!bone_at(&animation, &model, -1.0f, 0.0f, BONES[b], right[b])) return 1;
     }
 
@@ -241,9 +263,11 @@ int main(void) {
        rifle is up at the shoulder there, next to the head, so it travels with
        the head rather than trailing near the hip the way a carried one does. */
     float aimed_upright[3], aimed_left[3];
-    character_animation_init(&animation, &model);
+    character_animation_init(&animation, &model,
+                             &WEAPON_SPEC_ASSAULT_RIFLE.clips);
     if (!bone_at(&animation, &model, 0.0f, 1.0f, "hand_r", aimed_upright)) return 1;
-    character_animation_init(&animation, &model);
+    character_animation_init(&animation, &model,
+                             &WEAPON_SPEC_ASSAULT_RIFLE.clips);
     if (!bone_at(&animation, &model, 1.0f, 1.0f, "hand_r", aimed_left)) return 1;
 
     printf("\n1. a left lean takes the head and the gun to the model's own left\n");
@@ -296,7 +320,8 @@ int main(void) {
         CharacterVisualState walk = strafing(2.0f, 1.0f);
         CharacterVisualState idle = strafing(0.0f, 1.0f);
 
-        character_animation_init(&animation, &model);
+        character_animation_init(&animation, &model,
+                             &WEAPON_SPEC_ASSAULT_RIFLE.clips);
         for (int i = 0; i < 240; ++i)
             character_animation_update(&animation, &model, &jog, 1.0f / 120.0f);
         float held = largest_jump(&animation, &model, &jog, 120, scale,
@@ -317,7 +342,8 @@ int main(void) {
         /* And the hips, which is where a double-applied twist lands: the pelvis
            carries the whole leg turn, so anything that composes it twice shows
            here first and largest. */
-        character_animation_init(&animation, &model);
+        character_animation_init(&animation, &model,
+                             &WEAPON_SPEC_ASSAULT_RIFLE.clips);
         for (int i = 0; i < 240; ++i)
             character_animation_update(&animation, &model, &jog, 1.0f / 120.0f);
         float hips = largest_jump(&animation, &model, &walk, 60, scale,
@@ -381,7 +407,8 @@ int main(void) {
             {"jogging, sight down", &carried, 0.0f},
         };
         for (unsigned c = 0; c < sizeof CASES / sizeof CASES[0]; ++c) {
-            character_animation_init(&animation, &model);
+            character_animation_init(&animation, &model,
+                             &WEAPON_SPEC_ASSAULT_RIFLE.clips);
             settle_and_aim(&animation, &model, CASES[c].state, CASES[c].label,
                            CASES[c].limit);
         }
@@ -400,7 +427,8 @@ int main(void) {
 
         CharacterVisualState state = strafing(6.0f, 1.0f);
         state.x = 3.0f; state.y = 0.5f; state.z = -2.0f;
-        character_animation_init(&animation, &model);
+        character_animation_init(&animation, &model,
+                             &WEAPON_SPEC_ASSAULT_RIFLE.clips);
         /* An instance by hand rather than through character_instance_init,
            which lives with the drawing and wants a GL context to free. All the
            transform reads off one is the pose, the rig index and the hang
@@ -467,7 +495,8 @@ int main(void) {
                takes out past the corner, so its muzzle goes too. */
             CharacterVisualState peek = state;
             peek.lean = 1.0f;
-            character_animation_init(&animation, &model);
+            character_animation_init(&animation, &model,
+                             &WEAPON_SPEC_ASSAULT_RIFLE.clips);
             for (int i = 0; i < 360; ++i)
                 character_animation_update(&animation, &model, &peek, 1.0f / 120.0f);
             character_animation_pose(&animation, &model, &instance.pose);
@@ -480,6 +509,9 @@ int main(void) {
             check_min("muzzle moves with a full lean, metres", moved_by, 0.10f);
         }
     }
+
+    check_clip_set(&model, &WEAPON_SPEC_ASSAULT_RIFLE);
+    check_clip_set(&model, &WEAPON_SPEC_KATANA);
 
     printf("\n%s\n", failures ? "FAILURES" : "all checks passed");
     return failures ? 1 : 0;

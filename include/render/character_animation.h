@@ -3,6 +3,7 @@
 
 #include "render/skinned_model.h"
 #include "render/character_state.h"
+#include "gameplay/weapon_spec.h"
 
 /* Which clip the body is playing, and how it gets from the last one to this
    one. This is the half of the character rig that reads movement state; what
@@ -194,7 +195,9 @@ typedef struct {
 
 /* Resolves clip names against `model`. Safe on a model that loaded no clips:
    every role resolves to -1 and the body holds its bind pose. */
-void character_animation_init(CharacterAnimation* animation, const SkinnedModel* model);
+void character_animation_init(CharacterAnimation* animation,
+                              const SkinnedModel* model,
+                              const WeaponClipSet* clips);
 
 /* Advances the playhead and picks the clip `state` now calls for.
    `delta_time` is frame time, not simulation time - animation is presentation,

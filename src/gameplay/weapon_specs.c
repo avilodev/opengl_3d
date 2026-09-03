@@ -64,6 +64,10 @@ const WeaponSpec WEAPON_SPEC_AUTO_PISTOL = {
     .hold = WEAPON_HOLD_HANDS_TOGETHER,
     .grip_right = {0.0f, -0.055f, 0.010f},
     .grip_left = {0.0f, -0.085f, -0.030f},
+    /* The library authored these for a pistol, which is the closest thing in
+       it to a rifle: both hands meet at the grip, and on these models they
+       land on the magwell rather than out on the handguard. */
+    .clips = {{ "Pistol_Aim_Down", "Pistol_Aim_Neutral", "Pistol_Aim_Up" }},
 };
 
 /* The assault rifle. Everything about it trades rate for weight.
@@ -178,6 +182,10 @@ const WeaponSpec WEAPON_SPEC_ASSAULT_RIFLE = {
        furniture nobody can see past the optic - and what little of them shows
        pokes up through the glass. Off, by name, from the gun's own mesh. */
     .hidden_parts = {"IronSightMat"},
+    /* The library authored these for a pistol, which is the closest thing in
+       it to a rifle: both hands meet at the grip, and on these models they
+       land on the magwell rather than out on the handguard. */
+    .clips = {{ "Pistol_Aim_Down", "Pistol_Aim_Neutral", "Pistol_Aim_Up" }},
 };
 
 /* The katana. Its landmarks come from tools/katana_to_glb.py, which prints
@@ -225,4 +233,7 @@ const WeaponSpec WEAPON_SPEC_KATANA = {
     .hold = WEAPON_HOLD_TWO_POINT,
     .grip_right = {0.0f, -0.090f, 0.030f},
     .grip_left = {0.0f, -0.060f, -0.330f},
+    /* One pose, named three times. A sword has no aim pitch to blend along, so
+       the trio collapses rather than the blend growing a special case. */
+    .clips = {{ "Sword_Idle", "Sword_Idle", "Sword_Idle" }},
 };
