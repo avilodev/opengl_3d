@@ -120,3 +120,34 @@ int viewmodel_clip_arms_pose(const SkinnedModel* model, int clip, float time,
     }
     return 1;
 }
+
+int viewmodel_clip_arms_base(const SkinnedModel* model, int clip, float time,
+                             const MeleeSpec* melee, Pose* arms_out,
+                             ViewmodelPose* out) {
+    Pose scratch;
+    Mat4 hand;
+    Pose* arms = arms_out ? arms_out : &scratch;
+    if (!out) return 0;
+    if (!viewmodel_clip_arms_pose(model, clip, time, melee, arms, &hand))
+        return 0;
+
+    memset(out, 0, sizeof *out);
+    out->x = hand.m[12];
+    out->y = hand.m[13];
+    out->z = hand.m[14];
+
+    /* The renderer names glRotatef(yaw, 0,1,0), then pitch about x, then roll
+       about z, and GL hands the last one named to the vertex first - so the
+       matrix it builds is Ry * Rx * Rz, and these three lines are that product
+       read backwards. Getting the order wrong here does not fail: it produces
+       a sword that is merely rotated oddly, and looks like an art problem.
+
+       Column-major, so R[row][col] is m[col * 4 + row]. */
+    float sin_pitch = -hand.m[9];
+    if (sin_pitch > 1.0f) sin_pitch = 1.0f;
+    if (sin_pitch < -1.0f) sin_pitch = -1.0f;
+    out->pitch = asinf(sin_pitch) * (1.0f / MATH_DEG_TO_RAD);
+    out->roll = atan2f(hand.m[1], hand.m[5]) * (1.0f / MATH_DEG_TO_RAD);
+    out->yaw = atan2f(hand.m[8], hand.m[10]) * (1.0f / MATH_DEG_TO_RAD);
+    return 1;
+}

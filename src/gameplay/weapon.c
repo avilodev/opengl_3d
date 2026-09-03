@@ -246,7 +246,17 @@ void weapon_viewmodel_pose(const Weapon* weapon, const PlayerController* player,
        all. Asked of the spec rather than composed here, because the arms
        calibrate their shoulders against the same function - a second copy of
        this and the hands would reach for a gun that is not the one drawn. */
-    weapon_spec_rest_pose(spec, sprint, reload, weapon->ads, out);
+    /* A melee weapon's base is where the animated hand put it; a gun's is
+       where the spec says it rests. One branch, and only over the base: the
+       bob, the sway, the wall-run bank, the kick and the stow drop below are
+       the same lines for both, because a sword bobs when the player runs for
+       exactly the reason a rifle does. A melee weapon whose rig has not been
+       sampled yet falls through to the rest pose, which puts it somewhere
+       plausible for the frame or two before the arms are ready. */
+    if (weapon_spec_melee(spec) && weapon->melee_base_valid)
+        *out = weapon->melee_base;
+    else
+        weapon_spec_rest_pose(spec, sprint, reload, weapon->ads, out);
 
     /* The knock off a magazine being seated and then tapped home. On the pose
        rather than layered on by the renderer, so the muzzle, the optic's glass
@@ -360,6 +370,28 @@ void weapon_sight_center(const Weapon* weapon, const PlayerController* player,
    starts at the barrel, which is what stops a shot from looking like it came
    out of the player's forehead - or, while scoped, out of thin air a foot to
    the right of a gun the player can plainly see is centred. */
+const char* weapon_melee_clip(const Weapon* weapon, float* time_out) {
+    if (!weapon) return NULL;
+    const MeleeSpec* melee = weapon_spec_melee(weapon->spec);
+    if (!melee) return NULL;
+    if (weapon->melee_attack >= 0 &&
+        weapon->melee_attack < melee->attack_count) {
+        if (time_out) *time_out = weapon->melee_time;
+        return melee->attacks[weapon->melee_attack].clip;
+    }
+    /* Idle: the hold pose, which is the same clip the third-person body holds
+       the sword in. One name, so the two views cannot drift into holding it
+       differently. */
+    if (time_out) *time_out = 0.0f;
+    return weapon->spec->clips.aim[1];
+}
+
+void weapon_set_melee_base(Weapon* weapon, const ViewmodelPose* base, int valid) {
+    if (!weapon) return;
+    weapon->melee_base_valid = valid && base != NULL;
+    if (weapon->melee_base_valid) weapon->melee_base = *base;
+}
+
 void weapon_set_world_muzzle(Weapon* weapon, const float muzzle[3], int valid) {
     if (!weapon) return;
     weapon->world_muzzle_valid = valid && muzzle != 0;
@@ -662,6 +694,14 @@ void weapon_init(Weapon* weapon, const WeaponSpec* spec) {
     weapon->sprint = 0.0f;
     weapon->reload = 0.0f;
     weapon->trigger_latched = 1;
+    /* Idle, and worn rather than held. A melee weapon comes out of its
+       scabbard through the draw track rather than starting in the hand, and a
+       firearm keeps these at rest for its whole life. */
+    weapon->melee_attack = -1;
+    weapon->melee_time = 0.0f;
+    weapon->melee_duration = 0.0f;
+    weapon->sheathed = weapon_spec_melee(spec) != NULL;
+    weapon->melee_base_valid = 0;
     weapon->random_state = 0x9e3779b9u;
     for (int i = 0; i < WEAPON_TRACER_COUNT; ++i) weapon->tracers[i].life = 0.0f;
     for (int i = 0; i < WEAPON_IMPACT_COUNT; ++i) {

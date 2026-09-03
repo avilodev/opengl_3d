@@ -27,6 +27,16 @@ void weapon_renderer_draw_sight(const WeaponSpec* spec);
    than by the caller because they belong inside this pass: they share the gun's
    near plane and its cleared depth, and a hand drawn through the world's
    projection would be a hand that parallaxes off the grip it is holding. */
+/* Where the animated hand puts a melee weapon this frame, in camera space.
+
+   Asked here rather than solved inside the draw because the pose has to be on
+   the weapon BEFORE anything composes with it: the tracer origin, the sword
+   mesh and the arms all read weapon_viewmodel_pose, and a base published after
+   that call would be a frame behind the hand holding it. Returns 0 for a
+   firearm, or when the rig is not loaded yet. */
+int weapon_renderer_melee_base(const CharacterLibrary* arms, int arms_rig,
+                               const Weapon* weapon, ViewmodelPose* out);
+
 void weapon_renderer_draw_viewmodel(const Weapon* weapon,
                                     const PlayerController* player,
                                     const ThirdPersonCamera* camera,

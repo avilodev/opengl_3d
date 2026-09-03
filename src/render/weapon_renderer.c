@@ -2,6 +2,8 @@
 #include "render/primitives.h"
 #include "render/weapon_model.h"
 #include "render/viewmodel_arms.h"
+#include "render/viewmodel_clip_arms.h"
+#include "render/character_library.h"
 #include "gameplay/weapon_tuning.h"
 #include "gameplay/movement_tuning.h"
 #include "utils/math_utils.h"
@@ -96,7 +98,10 @@ static void draw_impacts(const Weapon* weapon) {
 static void draw_dropped_mags(const Weapon* weapon) {
     const WeaponSpec* spec = weapon->spec;
     const FirearmSpec* firearm = weapon_spec_firearm(spec);
-    if (!firearm->magazine_part) return;
+    /* A weapon with no gun half drops no magazines, and the ring it would read
+       is all zeroes anyway - but the part name is reached for before anything
+       is looked at, so the null has to be caught here. */
+    if (!firearm || !firearm->magazine_part) return;
     /* Empty: a magazine on the floor is one somebody has finished with. */
     const char* parts[2] = {firearm->magazine_part, NULL};
 
@@ -542,7 +547,11 @@ static const char* const* magazine_split(const Weapon* weapon,
                                          ReloadSample* sample) {
     const WeaponSpec* spec = weapon->spec;
     const FirearmSpec* firearm = weapon_spec_firearm(spec);
-    if (weapon_reload_blend(weapon) <= 0.0f || !firearm->magazine_part) return NULL;
+    /* No gun half is no magazine, and the null test has to come first: a sword
+       reload-blends to zero anyway, but the two conditions were being read in
+       the order that dereferences before it checks. */
+    if (!firearm || weapon_reload_blend(weapon) <= 0.0f ||
+        !firearm->magazine_part) return NULL;
     reload_sequence_sample(weapon_spec_reload_sequence(spec),
                            weapon->reload, sample);
     /* Seated at BOTH ends of the span is the only case where the magazine is
@@ -734,6 +743,29 @@ static void draw_receiver(const Weapon* weapon) {
     glEnable(GL_LIGHTING);
 }
 
+/* The clip and time this weapon is in, resolved against the loaded rig. Both
+   the base pose and the arms go through this, so they cannot be sampling
+   different frames of different clips. */
+static int melee_sample(const CharacterLibrary* arms, int arms_rig,
+                        const Weapon* weapon, Pose* arms_out,
+                        ViewmodelPose* out) {
+    if (!arms || arms_rig == CHARACTER_RIG_NONE || !weapon) return 0;
+    const MeleeSpec* melee = weapon_spec_melee(weapon->spec);
+    if (!melee) return 0;
+    const SkinnedModel* model = character_library_model(arms, arms_rig);
+    if (!model) return 0;
+    float time = 0.0f;
+    const char* name = weapon_melee_clip(weapon, &time);
+    int clip = viewmodel_clip_arms_find(model, name);
+    if (clip < 0) return 0;
+    return viewmodel_clip_arms_base(model, clip, time, melee, arms_out, out);
+}
+
+int weapon_renderer_melee_base(const CharacterLibrary* arms, int arms_rig,
+                               const Weapon* weapon, ViewmodelPose* out) {
+    return melee_sample(arms, arms_rig, weapon, NULL, out);
+}
+
 void weapon_renderer_draw_viewmodel(const Weapon* weapon,
                                     const PlayerController* player,
                                     const ThirdPersonCamera* camera,
@@ -858,7 +890,19 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
         glPopMatrix();
     }
 
-    if (arms && arms_rig != CHARACTER_RIG_NONE) {
+    if (arms && arms_rig != CHARACTER_RIG_NONE &&
+        weapon_spec_melee(weapon->spec)) {
+        /* The animated arms, in camera space, with the same clip and frame the
+           base pose above came from. The sword has already been drawn at that
+           pose, so the hand arrives around it rather than beside it. */
+        glPopMatrix();
+        glPushMatrix();
+        glLoadIdentity();
+        Pose swing;
+        ViewmodelPose unused;
+        if (melee_sample(arms, arms_rig, weapon, &swing, &unused))
+            viewmodel_arms_draw_pose(arms, arms_rig, &swing);
+    } else if (arms && arms_rig != CHARACTER_RIG_NONE) {
         glPopMatrix();
         glPushMatrix();
         glLoadIdentity();

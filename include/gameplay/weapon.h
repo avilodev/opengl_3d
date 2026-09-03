@@ -5,6 +5,7 @@
 #include "gameplay/combatant.h"
 #include "gameplay/player_controller.h"
 #include "gameplay/weapon_spec.h"
+#include "gameplay/viewmodel_pose.h"
 
 /* One gun in the player's hands. Which gun is the spec it was initialised
    with; this file has no numbers of its own.
@@ -171,6 +172,28 @@ typedef struct {
 
     unsigned int random_state;
 
+    /* The melee half of the weapon. Which attack is running, how far into its
+       clip it is, and whether the blade is in its scabbard.
+
+       `attack` is an index into the spec's own attack table and -1 for idle,
+       which makes the attack the player is in the whole of the combo state -
+       the table already says where each one goes next, so there is nothing
+       here for a second state machine to disagree with. */
+    int melee_attack;
+    float melee_time;
+    float melee_duration;
+    int sheathed;
+
+    /* Where the animated hand put the weapon this frame, in camera space,
+       filled by whoever has the rig before the pose is composed. A firearm
+       leaves it invalid and takes its base pose from the spec instead.
+
+       Cached rather than solved in weapon_viewmodel_pose because that function
+       has no rig and should not grow one: a sword's base pose is an animation
+       sample, and sampling belongs where the model is. */
+    ViewmodelPose melee_base;
+    int melee_base_valid;
+
     WeaponTracer tracers[WEAPON_TRACER_COUNT];
     WeaponImpact impacts[WEAPON_IMPACT_COUNT];
     WeaponDroppedMag dropped_mags[WEAPON_DROPPED_MAG_COUNT];
@@ -206,6 +229,23 @@ void weapon_set_targets(Weapon* weapon, CombatantSet* targets);
    stale, which for the origin of a streak that lives sixty milliseconds is not
    a quantity anyone can see. */
 void weapon_set_world_muzzle(Weapon* weapon, const float muzzle[3], int valid);
+
+/* Where the animated hand has put a melee weapon this frame, in camera space.
+   Published by the frame rather than solved inside the simulation, for the
+   same reason the world muzzle is: it comes off a rig and a clip, and neither
+   of those is something weapon.c should have to hold. `valid` zero puts the
+   weapon back on the spec's rest pose, which is where it sits for the frame or
+   two before the arms are ready. */
+void weapon_set_melee_base(Weapon* weapon, const ViewmodelPose* base, int valid);
+
+/* Which clip a melee weapon is playing and how far into it, for whoever has
+   the rig to sample. NULL on a weapon that is not melee.
+
+   Here and not in the renderer because it is the answer to a gameplay
+   question - what is this weapon doing - and two callers want it: the pose the
+   sword is drawn at and the arms it is drawn in. One derivation read twice,
+   rather than two that agree until one of them is edited. */
+const char* weapon_melee_clip(const Weapon* weapon, float* time_out);
 
 /* Where the visible streak starts, in world units. The round itself always
    leaves the eye - what the crosshair covers is what it hits - so this places

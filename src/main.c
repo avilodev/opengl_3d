@@ -20,6 +20,7 @@
 #include "render/hud.h"
 #include "render/renderer.h"
 #include "render/renderer3d.h"
+#include "render/weapon_renderer.h"
 #include "states/pause_menu.h"
 
 #define WINDOW_TITLE "Movement Shooter 3D"
@@ -172,7 +173,7 @@ int main(void) {
     pause_menu_init(&pause_menu);
     /* The auto pistol (WEAPON_SPEC_AUTO_PISTOL) is still here and still
        works; the player is simply not carrying it yet. */
-    weapon_init(&weapon, &WEAPON_SPEC_ASSAULT_RIFLE);
+    weapon_init(&weapon, &WEAPON_SPEC_KATANA);
     /* The body in third person holds what the hands in first person hold. One
        assignment, off the weapon rather than off a second name for it, so the
        two views cannot end up carrying different guns. */
@@ -316,6 +317,15 @@ int main(void) {
                                         body_gun->muzzle_up,
                                         body_gun->muzzle_forward, body_muzzle);
             weapon_set_world_muzzle(&weapon, body_muzzle, body_muzzle_valid);
+
+            /* And where the animated hand has a melee weapon, for the same
+               reason and at the same point: it comes off a rig and a clip,
+               which is not something the simulation should have to hold, and
+               everything that composes with it runs after this line. */
+            ViewmodelPose melee_base;
+            int melee_base_valid = weapon_renderer_melee_base(
+                &characters, player_rig, &weapon, &melee_base);
+            weapon_set_melee_base(&weapon, &melee_base, melee_base_valid);
 
             while (simulation_accumulator >= SIMULATION_STEP) {
                 PlayerCommand step_player = player_command;

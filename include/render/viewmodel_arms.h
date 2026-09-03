@@ -82,6 +82,16 @@ void viewmodel_arms_support_target(const WeaponSpec* spec,
                                    const ViewmodelBlend* blend,
                                    const Mat4* gun, float out[3]);
 
+/* Draws an arm pose that came from somewhere else - a swing clip, rather than
+   this file's solve. The same instance, the same cut, the same anchor and
+   scale; only the pose is another module's. Exposed so the clip-driven arms do
+   not need a second skinned instance and a second copy of the forearm cut,
+   which is the only part of this file a sword has any use for.
+
+   Returns 0 when the rig is not ready, exactly as the solve path would. */
+int viewmodel_arms_draw_pose(const CharacterLibrary* library, int rig,
+                             const Pose* pose);
+
 /* Releases the instance and the cut. Needs no GL context - a subset is index
    arrays and an instance is vertices - but call it at shutdown alongside the
    rest. */

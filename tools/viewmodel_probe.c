@@ -1879,6 +1879,56 @@ static void check_clip_arms(const WeaponSpec* spec, const SkinnedModel* model) {
     }
 }
 
+/* The sword and the hand holding it must not be independently derived.
+
+   Both come off viewmodel_clip_arms_base, and the check that they still do is
+   that the pose weapon_viewmodel_pose composes lands where the hand transform
+   said. Metres apart is the failure this exists for: a sword that took its
+   base from the spec's rest pose instead would sit exactly where the rifle
+   does, look entirely reasonable in a screenshot, and be nowhere near the
+   hands that are supposedly gripping it. */
+static void check_melee_rides_hand(const SkinnedModel* model) {
+    const WeaponSpec* spec = &WEAPON_SPEC_KATANA;
+    const MeleeSpec* melee = weapon_spec_melee(spec);
+    printf("\n%s rides the hand\n", spec->name);
+
+    float time = 0.0f;
+    Weapon weapon;
+    weapon_init(&weapon, spec);
+    const char* name = weapon_melee_clip(&weapon, &time);
+    int clip = viewmodel_clip_arms_find(model, name);
+    if (clip < 0) { expect(0, name ? name : "(no hold clip)"); return; }
+
+    Mat4 hand;
+    Pose arms;
+    ViewmodelPose base;
+    if (!viewmodel_clip_arms_pose(model, clip, time, melee, &arms, &hand) ||
+        !viewmodel_clip_arms_base(model, clip, time, melee, &arms, &base)) {
+        expect(0, "the hold pose samples");
+        return;
+    }
+    weapon_set_melee_base(&weapon, &base, 1);
+
+    PlayerController player;
+    memset(&player, 0, sizeof player);
+    player.ground.is_grounded = 1;
+
+    ViewmodelPose pose;
+    weapon_viewmodel_pose(&weapon, &player, &pose);
+    check("sword x against hand_r", pose.x, hand.m[12], 0.03f);
+    check("sword y against hand_r", pose.y, hand.m[13], 0.03f);
+    check("sword z against hand_r", pose.z, hand.m[14], 0.03f);
+
+    /* And the regression guard: a firearm still takes its base from the spec,
+       so nothing above has moved the rifle. */
+    Weapon rifle;
+    weapon_init(&rifle, &WEAPON_SPEC_ASSAULT_RIFLE);
+    ViewmodelPose rifle_pose, rest;
+    weapon_viewmodel_pose(&rifle, &player, &rifle_pose);
+    weapon_spec_rest_pose(&WEAPON_SPEC_ASSAULT_RIFLE, 0.0f, 0.0f, 0.0f, &rest);
+    check("the rifle is still at its rest pose", rifle_pose.z, rest.z, 0.0005f);
+}
+
 int main(void) {
     const WeaponSpec* spec = &WEAPON_SPEC_ASSAULT_RIFLE;
     check_pose_matches_gl(spec);
@@ -1902,6 +1952,7 @@ int main(void) {
                                      error, sizeof error))
             printf("note: extra clips not loaded (%s)\n", error);
         check_clip_arms(&WEAPON_SPEC_KATANA, &model);
+        check_melee_rides_hand(&model);
         ArmRig rig;
         if (check_arms(spec, &model, &rig)) {
             check_reload(spec, &rig);

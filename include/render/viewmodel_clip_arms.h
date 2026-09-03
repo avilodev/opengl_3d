@@ -4,6 +4,7 @@
 #include "gameplay/weapon_spec.h"
 #include "render/skinned_model.h"
 #include "utils/mat4.h"
+#include "gameplay/viewmodel_pose.h"
 
 /* First-person arms taken straight from an animation clip, for a weapon whose
    motion is authored rather than solved.
@@ -46,6 +47,17 @@
    nothing is written. */
 int viewmodel_clip_arms_pose(const SkinnedModel* model, int clip, float time,
                              const MeleeSpec* melee, Pose* out, Mat4* hand_out);
+
+/* The same sample, handed back as the pose type the rest of the viewmodel
+   speaks. The hand's rotation is decomposed into the yaw-pitch-roll the
+   renderer applies in that order, so a weapon drawn through the resulting
+   ViewmodelPose lands exactly where hand_out said it would - which is what
+   lets the tracer origin, the arms and the mesh all read one transform.
+
+   Returns 0 for the same reasons the call above does. */
+int viewmodel_clip_arms_base(const SkinnedModel* model, int clip, float time,
+                             const MeleeSpec* melee, Pose* arms_out,
+                             ViewmodelPose* out);
 
 /* The clip index for a name on this rig, or -1. A thin pass-through, here so
    callers of this module do not each reach into the skinned model to ask. */
