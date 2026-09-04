@@ -60,8 +60,14 @@ Mat4 character_body_transform(const CharacterInstance* instance,
    drawn through a projection of its own and a camera-space offset put straight
    into the world lands about half as far from the middle of the screen as the
    thing it came from, which is a correction a tracer has to make and a hit
-   test should not have to. The body's hand is already in world units, and it
-   is in the same place whether or not anybody is drawing it. */
+   test should not have to. The body's hand is already in world units.
+
+   It reads `instance->pose`, which is a published fact and not a drawing - see
+   character_renderer_update, which composes it whether or not the body is
+   visible precisely because this is here. It did not always: in first person
+   the pose stayed at the bind, so this returned the same hand every frame and
+   the sweep between two identical transforms had no length. A sword that swung
+   perfectly well on screen cut nothing. */
 int character_weapon_world(const SkinnedModel* model,
                            const CharacterInstance* instance,
                            const CharacterVisualState* state, Mat4* out);
@@ -69,8 +75,15 @@ int character_weapon_world(const SkinnedModel* model,
 int character_scabbard_transform(const SkinnedModel* model, const Pose* pose,
                                  const MeleeSpec* melee, Mat4* out);
 
+/* Where the weapon in this body's right hand sits, in the model's own space.
+
+   Takes the spec because where a fist closes on a mesh is the weapon's own
+   fact, not the rig's: a rifle is held by a pistol grip below its bore and a
+   katana by a tsuka along its axis, and this used to answer the first for both.
+   See render/weapon_grip.h. Returns 0 - writing nothing - for a body holding
+   nothing, a rig with no hand bone, or a hold with no stated grip. */
 int character_held_weapon_transform(const SkinnedModel* model, const Pose* pose,
-                                    Mat4* out);
+                                    const WeaponSpec* spec, Mat4* out);
 
 /* The muzzle of that rifle, in world units - the two offsets are the weapon
    spec's own, in the weapon model's metres, and the rig's scale is applied for

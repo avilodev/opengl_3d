@@ -1,4 +1,5 @@
 #include "render/character_transform.h"
+#include "render/weapon_grip.h"
 #include "gameplay/movement_tuning.h"
 #include "utils/math_utils.h"
 
@@ -38,12 +39,12 @@
 #define CHARACTER_GRIP_INTO_PALM -0.020f
 #define CHARACTER_GRIP_ALONG_HAND 0.060f
 
-/* The middle of the rifle's pistol grip, in the model's own space: on the
-   centreline, below the bore, a hair behind the origin. This is the point that
-   ends up in the fist, so it is the mesh's number and not a preference. */
-#define CHARACTER_GRIP_X 0.000f
-#define CHARACTER_GRIP_Y -0.076f
-#define CHARACTER_GRIP_Z -0.003f
+/* Where on the MESH the fist closes used to live here too, as three constants
+   whose own comment called them "the middle of the rifle's pistol grip" - and
+   which were then spent on every weapon a body ever held. A katana states its
+   own, 0.062m back along the tsuka's axis and ON it rather than 0.076m under
+   it, and first person has always solved to that number. Both views read it
+   now; see render/weapon_grip.h. */
 
 /* How far above its own feet the hang pose's gripping hand reaches, in the
    rig's own units. Multiplied by the same scale the body is drawn at, this is
@@ -180,20 +181,31 @@ Mat4 character_body_transform(const CharacterInstance* instance,
 }
 
 int character_held_weapon_transform(const SkinnedModel* model, const Pose* pose,
-                                    Mat4* out) {
+                                    const WeaponSpec* spec, Mat4* out) {
+    if (!spec || !out) return 0;
     Mat4 hand;
     if (!skinned_model_bone_matrix(model, pose, CHARACTER_WEAPON_BONE, &hand))
         return 0;
 
-    /* Bone, then into the palm, then a quarter turn about the bone's own x
-       that stands the gun up in the fist - its forward runs out along the
-       fingers and its top points the way the trigger finger does - then back
-       by the grip, which is the point of the mesh that ends up held. */
+    /* The weapon's frame into the fist's, built from the HOLD rather than stated
+       as a quarter turn about the bone's own x. That quarter turn stood the gun
+       up so its forward ran out along the fingers and its top pointed the way
+       the trigger finger does, which is what a pistol grip wants - and it was
+       applied to a tsuka, which is held along its own axis by two fists in a row
+       and wants nothing of the kind. */
+    Mat4 into_fist;
+    if (!weapon_grip_hand_rotation(spec->hold, 0, &into_fist)) return 0;
+
+    /* Bone, then into the palm, then the weapon stood up in the fist, then back
+       by the grip the SPEC names - the point of the mesh that ends up held, and
+       the same point the first-person solver walks its wrist back from. One
+       number, two cameras. */
     Mat4 grip = mat4_multiply(hand,
         mat4_translation(CHARACTER_GRIP_INTO_PALM, CHARACTER_GRIP_ALONG_HAND, 0.0f));
-    grip = mat4_multiply(grip, mat4_rotation_degrees(90.0f, 1, 0, 0));
-    grip = mat4_multiply(grip,
-        mat4_translation(-CHARACTER_GRIP_X, -CHARACTER_GRIP_Y, -CHARACTER_GRIP_Z));
+    grip = mat4_multiply(grip, into_fist);
+    grip = mat4_multiply(grip, mat4_translation(-spec->grip_right[0],
+                                                -spec->grip_right[1],
+                                                -spec->grip_right[2]));
     *out = grip;
     return 1;
 }
@@ -231,7 +243,8 @@ int character_weapon_world(const SkinnedModel* model,
                            const CharacterVisualState* state, Mat4* out) {
     if (!model || !instance || !state || !out || !instance->ready) return 0;
     Mat4 grip;
-    if (!character_held_weapon_transform(model, &instance->pose, &grip)) return 0;
+    if (!character_held_weapon_transform(model, &instance->pose, instance->weapon,
+                                         &grip)) return 0;
     *out = mat4_multiply(character_body_transform(instance, state, model), grip);
     return 1;
 }
@@ -246,7 +259,8 @@ int character_weapon_muzzle(const SkinnedModel* model,
     if (!model || !instance || !state || !out || !instance->ready) return 0;
 
     Mat4 grip;
-    if (!character_held_weapon_transform(model, &instance->pose, &grip)) return 0;
+    if (!character_held_weapon_transform(model, &instance->pose, instance->weapon,
+                                         &grip)) return 0;
 
     /* Body, then the hand's gun, then the muzzle on that gun - the whole chain
        the drawn rifle goes through, so the point comes out where the barrel is

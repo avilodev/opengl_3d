@@ -4,6 +4,7 @@
 #include "render/viewmodel_arms.h"
 #include "render/viewmodel_clip_arms.h"
 #include "render/arm_placement.h"
+#include "render/viewmodel_neck.h"
 #include "render/character_library.h"
 #include "gameplay/weapon_tuning.h"
 #include "gameplay/movement_tuning.h"
@@ -669,8 +670,12 @@ static void draw_loose_magazine(const Weapon* weapon, const Mat4* gun) {
         parts[n++] = firearm->rounds_part;
     parts[n] = NULL;
 
+    /* On whatever frame the caller left on the stack, which is the BODY's -
+       the neck, and nothing of the gun. `at` is already a point in that frame,
+       having been built from a gun matrix stated in it; loading the identity
+       here instead would drop the magazine out of the neck and leave it hanging
+       in front of an eye the rest of the viewmodel had turned away from. */
     glPushMatrix();
-    glLoadIdentity();
     glTranslatef(at[0], at[1], at[2]);
     /* The gun's own rotation, so a magazine in the well is aligned with the
        well, plus whatever tumble the track has given it on the way down. */
@@ -759,7 +764,8 @@ static int melee_sample(const CharacterLibrary* arms, int arms_rig,
     const char* name = weapon_melee_clip(weapon, &time);
     int clip = viewmodel_clip_arms_find(model, name);
     if (clip < 0) return 0;
-    return viewmodel_clip_arms_base(model, clip, time, melee, arms_out, out);
+    return viewmodel_clip_arms_base(model, clip, time, weapon->spec, arms_out,
+                                    out);
 }
 
 int weapon_renderer_melee_base(const CharacterLibrary* arms, int arms_rig,
@@ -829,7 +835,27 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
        origin drift apart the first time either changed. */
     ViewmodelPose pose;
     weapon_viewmodel_pose(weapon, player, &pose);
-    glRotatef(player->lean * VIEWMODEL_LEAN_ROLL, 0, 0, 1);
+
+    /* And where the body has got to, relative to an eye that pitched without
+       it. One rotation, built once, worn by everything on this side of the
+       camera: the gun, the scabbard on the hip, a magazine in the air and both
+       arms. It also carries the lean, which used to be a bare glRotatef here
+       and two more copies elsewhere - see render/viewmodel_neck.h. */
+    float view_pitch;
+    third_person_camera_view_angles(camera, NULL, &view_pitch, NULL);
+    ViewmodelNeck neck;
+    viewmodel_neck_build(&neck, weapon->spec, view_pitch, player->lean,
+                         weapon->ads);
+    float neck_matrix[16];
+    viewmodel_neck_matrix(&neck, neck_matrix);
+
+    /* The gun's own transform, composed in the BODY's frame with no neck in
+       it, because that is the frame the arms solve their hands in: they reach
+       for grips taken off this matrix and are then drawn under the same neck
+       the gun is, so a neck folded in here would be applied to the hands twice.
+       Read once and multiplied back on below, so the gun that is DRAWN is
+       literally the neck times the matrix the arms were handed - not a second
+       composition that has to agree with the first. */
     glTranslatef(pose.x, pose.y, pose.z);
     /* Where the gun is pointing. The same two numbers the bullet is composed
        from, applied about the gun's own origin, which is what lets a reticle
@@ -867,12 +893,26 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
     GLfloat gun_matrix[16];
     glGetFloatv(GL_MODELVIEW_MATRIX, gun_matrix);
 
-    /* The scabbard, in camera space. There is no body in first person to hang
-       it off, so it goes on the eye instead, dropped to where a hip is - the
-       same offsets the pelvis socket uses, measured from a different origin.
-       Mostly out of frame, and drawn anyway because the draw and the sheathe
-       are motions between the hand and this point, and a motion toward
-       something that is not being drawn is a hand reaching into nothing.
+    /* Now the body, and the gun back on top of it. Everything from here to the
+       matching pop is drawn through the neck. */
+    glLoadIdentity();
+    glMultMatrixf(neck_matrix);
+
+    /* The scabbard, on the BODY - not on the sword. There is no body in first
+       person to hang it off, so it goes on the eye instead, dropped to where a
+       hip is: the same offsets the pelvis socket uses, measured from a
+       different origin. Mostly out of frame, and drawn anyway because the draw
+       and the sheathe are motions between the hand and this point, and a motion
+       toward something that is not being drawn is a hand reaching into nothing.
+
+       Outside the sword's own transform, which is where it belongs and where it
+       was not. Inside it the scabbard inherited the sword's carry - so the belt
+       swung with the blade, and worse, it TRAVELLED with it through a draw:
+       every key of that track is a hand moving toward a mouth that was moving
+       with the hand. tools/sheath_probe.c has always modelled it as a fixed
+       point on the body and checked the track against that, which is what the
+       track was authored to reach; this is the renderer agreeing with the
+       thing that checks it.
 
        Before the weapon so the blade is over it rather than through it. */
     {
@@ -897,6 +937,9 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
         }
     }
 
+    glPushMatrix();
+    glMultMatrixf(gun_matrix);
+
     if (!weapon->sheathed) draw_receiver(weapon);
     /* After the gun, so the hood is in the depth buffer to occlude with, and
        the glass is available to mask to. */
@@ -905,30 +948,54 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
         firearm->sight->reticle == WEAPON_RETICLE_HOLOGRAPHIC)
         draw_holographic_reticle(weapon, camera->fov_degrees, aspect_ratio);
 
-    /* The arms, in camera space - they hang off the player's shoulders and are
-       not children of the gun, so the gun's own pose comes back off first. Last
-       in the pass, so the gun is already in the depth buffer and a hand that
-       solves a little into the receiver is hidden by it rather than drawn
-       through it. */
+    /* Off the gun and back onto the body, which is where the rest of this pass
+       belongs: the arms hang off shoulders and not off a receiver, and a
+       magazine that has left the weapon is in the air beside it. The neck is
+       still on the stack under all three. */
+    glPopMatrix();
+
     /* The magazine, if a reload has taken it off the weapon. Drawn after the
        gun so the receiver is already in the depth buffer, and before the arms
        so a hand carrying it is drawn over it rather than through it. */
     {
         Mat4 gun_transform;
         memcpy(gun_transform.m, gun_matrix, sizeof gun_transform.m);
-        glPushMatrix();
         draw_loose_magazine(weapon, &gun_transform);
-        glPopMatrix();
     }
 
-    if (arms && arms_rig != CHARACTER_RIG_NONE &&
-        weapon_spec_melee(weapon->spec)) {
-        /* The animated arms, in camera space, with the same clip and frame the
-           base pose above came from. The sword has already been drawn at that
-           pose, so the hand arrives around it rather than beside it. */
-        glPopMatrix();
-        glPushMatrix();
-        glLoadIdentity();
+    /* The arms. Last in the pass, so the gun is already in the depth buffer and
+       a hand that solves a little into the receiver is hidden by it rather than
+       drawn through it.
+
+       Handed the gun's BODY-frame matrix and drawn under the body's own neck,
+       which is the pair that keeps a fist closed on a hilt: a rotation given to
+       the gun and not to the hands is how a hilt ends up floating in front of a
+       fist reaching for where it used to be. The lean was exactly that for as
+       long as it was a glRotatef on the gun alone - the arms reached identity
+       through a glLoadIdentity a few lines later and never leaned at all. */
+    float carry_weights[MELEE_CARRY_COUNT];
+    int carried = weapon_melee_carry(weapon, NULL, carry_weights);
+    if (arms && arms_rig != CHARACTER_RIG_NONE && carried) {
+        /* A stance: the sword is where the spec says and the hands are solved
+           onto its hilt, which is a rifle's arrangement applied to a sword. The
+           same matrix the sword was drawn through, so the fists close on the
+           tsuka the player is actually looking at. */
+        viewmodel_arms_draw_carry(arms, arms_rig, weapon->spec, gun_matrix,
+                                  carry_weights);
+    } else if (arms && arms_rig != CHARACTER_RIG_NONE &&
+               weapon_spec_melee(weapon->spec)) {
+        /* A swing, a draw or a sheathe: the animated arms, with the same clip
+           and frame the base pose above came from. The sword has already been
+           drawn at that pose, so the hand arrives around it rather than beside
+           it.
+
+           The seam between this and the branch above is a switch and not a
+           blend, and knowingly: the two paths do not merely pose the arms
+           differently, they anchor them differently - a clip is carried onto
+           the eye it was sampled at and a solve is hung off a searched
+           shoulder placement - so there is no one pose to interpolate. What
+           closes the gap is that a recovery ends near the guard, which is a
+           thing to look at rather than to reason about. */
         Pose swing;
         ViewmodelPose unused;
         const MeleeSpec* held = weapon_spec_melee(weapon->spec);
@@ -936,9 +1003,6 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
             viewmodel_arms_draw_pose(arms, arms_rig, &swing,
                                      held->view_clip_offset);
     } else if (arms && arms_rig != CHARACTER_RIG_NONE) {
-        glPopMatrix();
-        glPushMatrix();
-        glLoadIdentity();
         ViewmodelBlend blend = {
             weapon_sprint_blend(weapon), weapon_reload_blend(weapon),
             weapon->ads, weapon->reload,

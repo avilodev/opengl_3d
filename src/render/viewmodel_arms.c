@@ -1,6 +1,8 @@
 #include "render/viewmodel_arms.h"
 #include "render/viewmodel_clip_arms.h"
 #include "render/arm_placement.h"
+#include "render/viewmodel_neck.h"
+#include "render/weapon_grip.h"
 #include "utils/mat4.h"
 #include "utils/math_utils.h"
 
@@ -38,58 +40,11 @@
    so it is the roll and the yaw that put the handguard out of reach, not the
    0.16m the gun moved. */
 
-/* Which way the fingers point, in the GUN's own frame, so the wrists follow the
-   weapon rather than the body. Rotating a bone onto a direction leaves its roll
-   free, and these are what decide it.
-
-   Per hold rather than per gun, because what a wrist does is decided by what it
-   is holding and not by which gun it is: every rifle's support hand runs along
-   a handguard, and every pistol's wraps the firing hand. A gun states which of
-   these it is and gets both wrists for free.
-
-   This rig's hand is a closed fist, 0.13m from wrist to fingertip against a
-   handguard 0.06m across - it cannot wrap the tube, so whatever it does not wrap
-   overshoots. Aimed across and up the support fist crossed the bore and came out
-   the far side of the receiver level with the optic; run forward along the tube
-   the overshoot goes where a support hand already is. */
-static const float ARMS_HAND_DIR[2][2][3] = {
-    /* TWO_POINT: firing hand forward across the grip, support hand along the
-       handguard with a little wrap. */
-    { { 0.00f, -0.15f, -0.99f }, { 0.30f,  0.10f, -0.95f } },
-    /* HANDS_TOGETHER: both forward, the support hand rolled slightly under the
-       firing one rather than across a tube it does not have. */
-    { { 0.00f, -0.15f, -0.99f }, { 0.18f, -0.28f, -0.94f } },
-};
-
-/* Which way the PALM faces, in the gun's own frame. The second half of a wrist,
-   and the half that was missing.
-
-   Pointing a bone onto a direction is a minimal rotation, so aiming the fingers
-   settles where they go and leaves the palm free to spin around them - and what
-   it spun to was whatever the elbow's own unconstrained roll happened to hand
-   down. Measured in the gun's frame, the same firing grip came out palm-inward
-   at the hip and palm-DOWN at the shoulder and through the sprint carry: a
-   quarter turn of wrist between two poses of one hold, on a hand that never let
-   go of the grip. The arm was tracking the gun and the wrist was not.
-
-   The shooting hand wraps the grip from its right, so the palm faces across the
-   gun toward the centreline, tilted a fifth down - which is what puts the thumb
-   side up the grip's rearward cant rather than straight up. Both holds are a
-   fist on a pistol grip and want the same answer; the table is per hold anyway
-   so a gun held some other way has somewhere to say so.
-
-   The support hand is deliberately left free (all zeroes). It is the hand the
-   reload track authors a roll for, key by key, against this same spin -
-   constraining it means re-basing every one of those angles, and a pass at that
-   is what this reverted from. Its wrist has the same defect and wants the same
-   fix, once the reload rolls are re-measured against a base that holds still
-   and the result is looked at rather than reasoned about. */
-static const float ARMS_PALM_DIR[2][2][3] = {
-    /* TWO_POINT */
-    { { -1.00f, -0.20f, 0.00f }, { 0.00f, 0.00f, 0.00f } },
-    /* HANDS_TOGETHER */
-    { { -1.00f, -0.20f, 0.00f }, { 0.00f, 0.00f, 0.00f } },
-};
+/* The two tables that used to live here - which way the fingers run and which
+   way the palm faces, per hold, in the weapon's own frame - are in
+   render/weapon_grip.c now. They moved because third person needed the same
+   two facts and had been answering them with a rifle's pistol grip and a
+   hard-coded quarter turn. See render/weapon_grip.h. */
 
 /* Which way the elbows break: down and out, the way a shouldered rifle holds
    them. Mirrored on x for the left arm. */
@@ -145,7 +100,7 @@ typedef struct {
        degree of freedom to keep the wrist from turning inside-out. */
     float hand_roll;
     /* Where that palm should face this frame, in the rig's space, off the gun.
-       Zero for a hand whose roll is left free - see ARMS_PALM_DIR. */
+       Zero for a hand whose roll is left free - see weapon_grip_palm_dir. */
     float palm_dir[3];
     /* Where the closed fist's grip actually is, relative to the wrist: how far
        along the fingers, how far toward the palm, and how far across. Measured
@@ -179,6 +134,12 @@ static struct {
        weapon swap re-solves; nothing else does. */
     const WeaponSpec* solved_for;
     ArmPlacement hip, sprint, ads;
+    /* And one per melee stance, solved the same way and for the same reason:
+       a placement that reaches a guard held up in front does not reach a hand
+       resting at the hip, and blending the two placements by the same weights
+       the stances are blended by is what keeps the shoulders and the hands
+       from being a stance out of step. */
+    ArmPlacement carry[MELEE_CARRY_COUNT];
     /* One per key of the reload track, solved at load like the three above.
        The support hand leaves the weapon during a reload and no single
        placement follows it, so the shoulders walk between these as it goes. */
@@ -469,9 +430,9 @@ static void pose_targets(const WeaponSpec* spec, float sprint, float reload,
        hand that is a fist short of the grip it closes on. Solving against the
        grip put the placement a hand's length too far out. */
     float fingers[3], palm[3];
-    viewmodel_pose_transform_direction(&pose, ARMS_HAND_DIR[spec->hold][0],
+    viewmodel_pose_transform_direction(&pose, weapon_grip_hand_dir(spec->hold, 0),
                                        fingers);
-    viewmodel_pose_transform_direction(&pose, ARMS_PALM_DIR[spec->hold][0],
+    viewmodel_pose_transform_direction(&pose, weapon_grip_palm_dir(spec->hold, 0),
                                        palm);
     float grip[3];
     memcpy(grip, targets[0], sizeof grip);
@@ -629,10 +590,82 @@ static void reload_support_direction(const WeaponSpec* spec,
     *wrist_roll = wanted_roll * blend->reload;
 }
 
+/* Both wrists for a weapon held at `pose`, in camera space.
+
+   BOTH walked back down their own fingers, which is the difference from
+   pose_targets: on a rifle the support point is a wrist already - the hand
+   runs along a handguard rather than closing on anything - and on a hilt both
+   hands close on the shaft, so each is a grip a fist's length out from the
+   wrist that holds it. Handing the grips straight to the solver would put both
+   wrists on the tsuka and leave two fists closed on the air beyond it. */
+static void carry_targets(const WeaponSpec* spec, const ViewmodelPose* pose,
+                          float targets[2][3]) {
+    for (int a = 0; a < 2; ++a) {
+        float grip[3], fingers[3], palm[3];
+        viewmodel_pose_transform_point(pose,
+                                       a ? spec->grip_left : spec->grip_right,
+                                       grip);
+        viewmodel_pose_transform_direction(pose, weapon_grip_hand_dir(spec->hold, a),
+                                           fingers);
+        viewmodel_pose_transform_direction(pose, weapon_grip_palm_dir(spec->hold, a),
+                                           palm);
+        wrist_from_grip(&g_arms.arms[a], fingers, palm, grip, targets[a]);
+    }
+}
+
+/* Solved once per melee weapon: one placement per stance.
+
+   The sibling of the firearm path below, and deliberately not a branch inside
+   it - a sword has no sprint carry, no aim and no reload track, and asking it
+   for one is a null dereference at the first draw. What the two share is the
+   shape: a weapon states where it is held and where its grips are, and where
+   the shoulders have to be to reach them is solved rather than tuned. */
+static void solve_for_carries(const WeaponSpec* spec, const MeleeSpec* melee) {
+    float targets[2][3];
+    int found[MELEE_CARRY_COUNT];
+    for (int c = 0; c < MELEE_CARRY_COUNT; ++c) {
+        carry_targets(spec, &melee->carries[c], targets);
+        found[c] = arm_placement_solve(&g_arms.rig, targets,
+                                       spec->view_fov * 0.5f,
+                                       &g_arms.carry[c]);
+    }
+
+    /* The same fallback the gun path takes, for the same reason: the search
+       returns a placement whether or not it found a comfortable one, so a
+       stance nobody can reach would otherwise draw arms clamped straight at
+       whatever it last tried and look like a stance somebody chose. The guard
+       is tried first as the donor because it is the stance the sword spends
+       its visible life in. */
+    int donor = found[MELEE_CARRY_GUARD] ? MELEE_CARRY_GUARD : -1;
+    for (int c = 0; c < MELEE_CARRY_COUNT && donor < 0; ++c)
+        if (found[c]) donor = c;
+    if (donor < 0) {
+        ArmPlacement fallback = {0.10f, 45.0f};
+        for (int c = 0; c < MELEE_CARRY_COUNT; ++c) g_arms.carry[c] = fallback;
+        printf("First-person arms: no shoulder placement reaches %s's hilt; "
+               "using a fallback\n", spec->name);
+    } else {
+        for (int c = 0; c < MELEE_CARRY_COUNT; ++c)
+            if (!found[c]) g_arms.carry[c] = g_arms.carry[donor];
+    }
+
+    g_arms.solved_for = spec;
+    printf("First-person arms for %s: rest z %+.2f blade %.0f deg, "
+           "guard z %+.2f blade %.0f deg, momentum z %+.2f blade %.0f deg\n",
+           spec->name,
+           g_arms.carry[MELEE_CARRY_REST].z, g_arms.carry[MELEE_CARRY_REST].blade,
+           g_arms.carry[MELEE_CARRY_GUARD].z, g_arms.carry[MELEE_CARRY_GUARD].blade,
+           g_arms.carry[MELEE_CARRY_MOMENTUM].z,
+           g_arms.carry[MELEE_CARRY_MOMENTUM].blade);
+}
+
 /* Solved once per weapon. A gun states two grip points and a hold; where the
    shoulders have to be to reach them is this function's problem, which is the
    whole reason a new gun is a data change and not an edit in here. */
 static void solve_for_weapon(const WeaponSpec* spec) {
+    const MeleeSpec* melee = weapon_spec_melee(spec);
+    if (melee) { solve_for_carries(spec, melee); return; }
+
     float targets[2][3];
 
     pose_targets(spec, 0.0f, 0.0f, 0.0f, targets);
@@ -672,9 +705,9 @@ static void solve_for_weapon(const WeaponSpec* spec) {
         /* The firing hand keeps its hold on the grip throughout, so it is
            walked back the same way here as anywhere else. The support hand's
            keys are already wrist positions. */
-        viewmodel_pose_transform_direction(&held, ARMS_HAND_DIR[spec->hold][0],
+        viewmodel_pose_transform_direction(&held, weapon_grip_hand_dir(spec->hold, 0),
                                            fingers);
-        viewmodel_pose_transform_direction(&held, ARMS_PALM_DIR[spec->hold][0],
+        viewmodel_pose_transform_direction(&held, weapon_grip_palm_dir(spec->hold, 0),
                                            palm);
         wrist_from_grip(&g_arms.arms[0], fingers, palm, grip, targets[0]);
         key_hand(&track->keys[i], &held, targets[1]);
@@ -813,6 +846,20 @@ static int build(const CharacterLibrary* library, int rig) {
         for (int a = 0; a < 2; ++a)
             measure_grip_centre(model, &pose, &g_arms.instance, &g_arms.arms[a],
                                 hand_bone[a]);
+    }
+
+    /* And where the skull turns, which is the one number the neck cannot
+       invent - see render/viewmodel_neck.h. The step out of the head bone to
+       the eye, negated: the eye is up and forward of the joint, so the joint is
+       down and back of the eye. Set here because this is where the rig the arms
+       are cut from becomes available, and a neck asked before it is measured
+       simply turns about the eye. */
+    {
+        float step[3];
+        if (viewmodel_clip_arms_eye_step(model, step)) {
+            const float pivot[3] = {-step[0], -step[1], -step[2]};
+            viewmodel_neck_set_pivot(pivot);
+        }
     }
 
     g_arms.model = model;
@@ -1115,6 +1162,39 @@ static void solve_arms(const SkinnedModel* model, const float targets[2][3],
    Public because the magazine needs the same answer: a magazine being carried
    up from the chest is drawn AT the hand, and computing that a second time in
    the renderer is how the two would come to disagree by a frame. */
+/* Solve, skin and draw, given two wrist targets already in the rig's own
+   space. The tail of every arm draw, and shared rather than repeated because
+   there are two of them now: a gun is placed and reached for, and a carried
+   sword is placed and reached for the same way. */
+static void draw_solved(const SkinnedModel* model, const float targets[2][3],
+                        const float anchor[3], float blade) {
+    /* The authored grip underneath, the solved arms on top. What the clip is
+       here for is the twenty-two bones of each hand: the arms are overwritten
+       one bone later, and everything above the clavicles is not drawn. */
+    Pose pose;
+    if (g_arms.grip_clip >= 0)
+        skinned_model_sample(model, g_arms.grip_clip, 0.0f, &pose);
+    else
+        skinned_model_bind_pose(model, &pose);
+    solve_arms(model, targets, &pose);
+    skinned_model_skin(model, &pose, &g_arms.instance);
+
+    glPushMatrix();
+    /* The anchor, then the rig's scale, then back off the point the anchor was
+       measured from - the inverse of arm_placement_to_model_space, in the order GL composes. */
+    glTranslatef(anchor[0], anchor[1], anchor[2]);
+    /* The blade, then the facing - and in that order, because GL applies the
+       last transform named to the vertex first. Negative on the blade, because
+       GL's y-rotation is the transpose of the one the rig conversion undoes. */
+    glRotatef(-blade, 0, 1, 0);
+    glRotatef(ARMS_FACING_DEGREES, 0, 1, 0);
+    glScalef(g_arms.rig.scale, g_arms.rig.scale, g_arms.rig.scale);
+    glTranslatef(-g_arms.rig.shoulder_mid[0], -g_arms.rig.shoulder_mid[1],
+                 -g_arms.rig.shoulder_mid[2]);
+    skinned_model_draw_subset(model, &g_arms.instance, &g_arms.subset);
+    glPopMatrix();
+}
+
 void viewmodel_arms_support_target(const WeaponSpec* spec,
                                    const ViewmodelBlend* blend,
                                    const Mat4* gun, float out[3]) {
@@ -1155,6 +1235,12 @@ void viewmodel_arms_draw(const CharacterLibrary* library, int rig,
        past the end of it. Cheaper to check than to reason about. */
     if (character_library_model(library, rig) != g_arms.model) return;
     if (!spec) return;
+    /* Guns only. A melee weapon's placements are its stances, solved by
+       solve_for_carries, and this path would read the three a firearm has -
+       which for a sword were never solved at all. The renderer picks between
+       the two on weapon_melee_carry; this is here so a caller that forgets
+       gets nothing rather than arms hung off an uninitialized placement. */
+    if (weapon_spec_melee(spec)) return;
     /* A weapon swap is the only thing that re-solves. */
     if (spec != g_arms.solved_for) solve_for_weapon(spec);
 
@@ -1187,8 +1273,8 @@ void viewmodel_arms_draw(const CharacterLibrary* library, int rig,
     float fingers[2][3], palm[2][3];
     for (int a = 0; a < 2; ++a) {
         g_arms.arms[a].hand_roll = 0.0f;
-        mat4_transform_direction(&gun, ARMS_HAND_DIR[spec->hold][a], fingers[a]);
-        mat4_transform_direction(&gun, ARMS_PALM_DIR[spec->hold][a], palm[a]);
+        mat4_transform_direction(&gun, weapon_grip_hand_dir(spec->hold, a), fingers[a]);
+        mat4_transform_direction(&gun, weapon_grip_palm_dir(spec->hold, a), palm[a]);
 
         /* The support hand is the one that lets go. Through a reload its
            direction comes off the track instead of off the gun, along with the
@@ -1208,7 +1294,7 @@ void viewmodel_arms_draw(const CharacterLibrary* library, int rig,
         /* And the same for the palm, which is what stops the wrist rolling to
            whatever the elbow left it at. A zero entry means this hand's roll is
            left free, and the target stays zero for palm_roll to read. */
-        const float* want = ARMS_PALM_DIR[spec->hold][a];
+        const float* want = weapon_grip_palm_dir(spec->hold, a);
         if (want[0] != 0.0f || want[1] != 0.0f || want[2] != 0.0f)
             arm_placement_rig_from_camera(palm[a], blade,
                                           g_arms.arms[a].palm_dir);
@@ -1234,31 +1320,70 @@ void viewmodel_arms_draw(const CharacterLibrary* library, int rig,
     arm_placement_to_model_space(&g_arms.rig, camera_point, anchor, blade,
                                  targets[1]);
 
-    /* The authored grip underneath, the solved arms on top. What the clip is
-       here for is the twenty-two bones of each hand: the arms are overwritten
-       one bone later, and everything above the clavicles is not drawn. */
-    Pose pose;
-    if (g_arms.grip_clip >= 0)
-        skinned_model_sample(model, g_arms.grip_clip, 0.0f, &pose);
-    else
-        skinned_model_bind_pose(model, &pose);
-    solve_arms(model, targets, &pose);
-    skinned_model_skin(model, &pose, &g_arms.instance);
+    draw_solved(model, targets, anchor, blade);
+}
 
-    glPushMatrix();
-    /* The anchor, then the rig's scale, then back off the point the anchor was
-       measured from - the inverse of arm_placement_to_model_space, in the order GL composes. */
-    glTranslatef(anchor[0], anchor[1], anchor[2]);
-    /* The blade, then the facing - and in that order, because GL applies the
-       last transform named to the vertex first. Negative on the blade, because
-       GL's y-rotation is the transpose of the one the rig conversion undoes. */
-    glRotatef(-blade, 0, 1, 0);
-    glRotatef(ARMS_FACING_DEGREES, 0, 1, 0);
-    glScalef(g_arms.rig.scale, g_arms.rig.scale, g_arms.rig.scale);
-    glTranslatef(-g_arms.rig.shoulder_mid[0], -g_arms.rig.shoulder_mid[1],
-                 -g_arms.rig.shoulder_mid[2]);
-    skinned_model_draw_subset(model, &g_arms.instance, &g_arms.subset);
-    glPopMatrix();
+int viewmodel_arms_draw_carry(const CharacterLibrary* library, int rig,
+                              const WeaponSpec* spec,
+                              const float gun_matrix[16],
+                              const float weights[MELEE_CARRY_COUNT]) {
+    if (g_arms.state == ARMS_FAILED) return 0;
+    if (g_arms.state != ARMS_READY && !build(library, rig)) return 0;
+    if (character_library_model(library, rig) != g_arms.model) return 0;
+    if (!spec || !weapon_spec_melee(spec) || !gun_matrix || !weights) return 0;
+    if (spec != g_arms.solved_for) solve_for_weapon(spec);
+
+    const SkinnedModel* model = g_arms.model;
+
+    /* Where the shoulders are for this mixture of stances - the same three
+       weights the sword's own pose was blended from, so the placement and the
+       point it has to reach are never a stance out of step. Folded in against
+       the running total, which for two scalars is the weighted average. */
+    ArmPlacement placement = g_arms.carry[0];
+    float total = weights[0];
+    for (int c = 1; c < MELEE_CARRY_COUNT; ++c) {
+        total += weights[c];
+        if (total <= 1e-6f) continue;
+        float t = weights[c] / total;
+        placement.z = lerpf(placement.z, g_arms.carry[c].z, t);
+        placement.blade = lerpf(placement.blade, g_arms.carry[c].blade, t);
+    }
+    float anchor[3];
+    arm_placement_anchor(placement, anchor);
+    float blade = placement.blade;
+
+    /* The grips off the LIVE sword transform rather than off the blended
+       stance, for the reason the gun path reads its own matrix: the bob, the
+       sway and the neck are all on the drawn sword and none of them are in the
+       stance the shoulders were solved against. The shoulders are a resting
+       calibration; the hands track what is actually on screen. */
+    Mat4 sword;
+    memcpy(sword.m, gun_matrix, sizeof sword.m);
+
+    float targets[2][3];
+    for (int a = 0; a < 2; ++a) {
+        float fingers[3], palm[3], grip[3], wrist[3];
+        mat4_transform_direction(&sword, weapon_grip_hand_dir(spec->hold, a), fingers);
+        mat4_transform_direction(&sword, weapon_grip_palm_dir(spec->hold, a), palm);
+        g_arms.arms[a].hand_roll = 0.0f;
+        arm_placement_rig_from_camera(fingers, blade, g_arms.arms[a].hand_dir);
+        const float* want = weapon_grip_palm_dir(spec->hold, a);
+        if (want[0] != 0.0f || want[1] != 0.0f || want[2] != 0.0f)
+            arm_placement_rig_from_camera(palm, blade, g_arms.arms[a].palm_dir);
+        else
+            memset(g_arms.arms[a].palm_dir, 0,
+                   sizeof g_arms.arms[a].palm_dir);
+
+        /* Both hands walked back off their own grip - see carry_targets. */
+        mat4_transform_point(&sword, a ? spec->grip_left : spec->grip_right,
+                             grip);
+        wrist_from_grip(&g_arms.arms[a], fingers, palm, grip, wrist);
+        arm_placement_to_model_space(&g_arms.rig, wrist, anchor, blade,
+                                     targets[a]);
+    }
+
+    draw_solved(model, targets, anchor, blade);
+    return 1;
 }
 
 int viewmodel_arms_draw_pose(const CharacterLibrary* library, int rig,
@@ -1274,9 +1399,9 @@ int viewmodel_arms_draw_pose(const CharacterLibrary* library, int rig,
        arms and the weapon in them are placed by one function and cannot be
        calibrated apart. This file's own numbers are for the SOLVE, which
        measures from the same points but is free to move them. */
-    float shoulder_mid[3], scale;
+    float eye[3], scale;
     if (!viewmodel_clip_arms_calibrate(model, &scale)) return 0;
-    if (!viewmodel_clip_arms_anchor(model, pose, shoulder_mid)) return 0;
+    if (!viewmodel_clip_arms_eye(model, pose, eye)) return 0;
 
     skinned_model_skin(model, pose, &g_arms.instance);
 
@@ -1284,13 +1409,17 @@ int viewmodel_arms_draw_pose(const CharacterLibrary* library, int rig,
     /* The same chain the solve path ends with, with no blade: a swing's stance
        is in the clip, and turning the whole rig on top of it would turn the
        animation as well as the shoulders. The weapon's own offset goes on
-       first, so the hands and the hilt travel together. */
+       first, so the hands and the hilt travel together.
+
+       No shoulder drop, because the anchor is the eye and not the shoulders:
+       the rig's own neck already puts the shoulder line below the camera, and
+       a stated drop on top of it would be that distance counted twice. */
     glTranslatef(offset ? offset[0] : 0.0f,
-                 (offset ? offset[1] : 0.0f) - ARMS_SHOULDER_DOWN,
+                 offset ? offset[1] : 0.0f,
                  offset ? offset[2] : 0.0f);
     glRotatef(ARMS_FACING_DEGREES, 0, 1, 0);
     glScalef(scale, scale, scale);
-    glTranslatef(-shoulder_mid[0], -shoulder_mid[1], -shoulder_mid[2]);
+    glTranslatef(-eye[0], -eye[1], -eye[2]);
     skinned_model_draw_subset(model, &g_arms.instance, &g_arms.subset);
     glPopMatrix();
     return 1;

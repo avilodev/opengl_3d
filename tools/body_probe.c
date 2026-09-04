@@ -18,6 +18,7 @@
 #include "render/skinned_model.h"
 #include "gameplay/movement_tuning.h"
 #include "gameplay/weapon_spec.h"
+#include "gameplay/weapon_tuning.h"
 #include "utils/mat4.h"
 
 #include <math.h>
@@ -263,6 +264,181 @@ static void settle_and_aim(CharacterAnimation* animation, const SkinnedModel* mo
     }
 }
 
+/* --- the hand a swing is swept off ---
+
+   What cuts is not the sword on the screen. A melee hit volume is swept between
+   the body's hand on the previous step and its hand on this one - see
+   character_weapon_world and main.c - so the whole of melee damage rests on one
+   thing: that the hand MOVES through a swing.
+
+   It is the least visible dependency in the game. The viewmodel plays its clip
+   whatever the body does, so a hand that has stopped moving looks exactly like
+   a hand that has not, and the only symptom is damage quietly failing to
+   arrive. It did fail, for as long as the pose was composed on the drawn side
+   of character_renderer_update's `visible` flag: in first person the hand was
+   the bind pose on every frame, the sweep had no length, and the blade cut a
+   stationary segment beside the player's boot.
+
+   So this measures the travel. Not that it is correct - that is the clip's
+   business - but that there is any. */
+static void check_swing_moves_the_hand(const SkinnedModel* model) {
+    printf("\nthe hand a swing is swept off\n");
+    const MeleeSpec* melee = weapon_spec_melee(&WEAPON_SPEC_KATANA);
+    if (!melee) { expect(0, "the katana has a melee half"); return; }
+
+    float scale = character_rig_scale(model);
+    const float STEP = 1.0f / 120.0f;
+    int steps = (int)(MELEE_ATTACK_SECONDS / STEP);
+
+    printf("   the rig faces +z and its own left is +x; heights are above its "
+           "feet, on a %.2fm body\n", CHARACTER_RIG_HEIGHT);
+    printf("   %-18s %6s %6s %8s %8s %8s %8s\n", "attack", "clip", "seen",
+           "travel", "across", "in front", "tip low");
+
+    for (int a = 0; a < melee->attack_count; ++a) {
+        const MeleeAttack* attack = &melee->attacks[a];
+        if (attack->active_to <= attack->active_from) continue;  /* a block */
+        int clip = skinned_model_find_clip(model, attack->clip);
+        if (clip < 0) { expect(0, "the attack's clip is on this rig"); continue; }
+
+        CharacterAnimation animation;
+        character_animation_init(&animation, model, &WEAPON_SPEC_KATANA.clips);
+        CharacterVisualState state = standing(0.0f, 0.0f);
+        /* Settled into the hold first, so what is measured is the swing and
+           not the cross-fade into it. */
+        for (int i = 0; i < 240; ++i)
+            character_animation_update(&animation, model, &state, 1.0f / 120.0f);
+        character_animation_play_oneshot(&animation, model, clip,
+                                         MELEE_ATTACK_SECONDS);
+
+        float travel = 0.0f, longest = 0.0f;
+        float low = 1e9f, high = -1e9f;
+        float left = -1e9f, right = 1e9f;
+        int samples = 0, in_front = 0;
+        float previous[3];
+        int have_previous = 0;
+
+        for (int i = 0; i <= steps; ++i) {
+            float progress = (float)i / (float)steps;
+            Pose pose;
+            character_animation_pose(&animation, model, &pose);
+            Mat4 grip;
+            if (character_held_weapon_transform(model, &pose, &WEAPON_SPEC_KATANA, &grip) &&
+                progress >= attack->active_from &&
+                progress <= attack->active_to) {
+                float base[3], tip[3];
+                mat4_transform_point(&grip, melee->blade_base, base);
+                mat4_transform_point(&grip, melee->blade_tip, tip);
+                for (int c = 0; c < 3; ++c) {
+                    base[c] *= scale;
+                    tip[c] *= scale;
+                }
+                base[1] -= model->min_y * scale;
+                tip[1] -= model->min_y * scale;
+
+                ++samples;
+                /* In front means the whole edge is: a blade with its tip
+                   behind the body is a blade that can cut what is behind
+                   it. */
+                if (base[2] > 0.0f && tip[2] > 0.0f) ++in_front;
+                if (tip[1] < low) low = tip[1];
+                if (tip[1] > high) high = tip[1];
+                if (tip[0] > left) left = tip[0];
+                if (tip[0] < right) right = tip[0];
+                if (have_previous) {
+                    float d = 0.0f;
+                    for (int c = 0; c < 3; ++c) {
+                        float e = tip[c] - previous[c];
+                        d += e * e;
+                    }
+                    d = sqrtf(d);
+                    travel += d;
+                    if (d > longest) longest = d;
+                }
+                memcpy(previous, tip, sizeof previous);
+                have_previous = 1;
+            }
+            character_animation_update(&animation, model, &state, STEP);
+        }
+
+        float front = samples > 0 ? (float)in_front / (float)samples : 0.0f;
+        float length = model->clips[clip].duration;
+        /* How much of the clip the attack ever shows. A clip longer than
+           MELEE_ATTACK_SECONDS is cut off partway, and the window fractions
+           are stated against the ATTACK - so a long clip's window lands in its
+           opening frames, which on a swing is the wind-up. */
+        float seen = length > 0.0f ? MELEE_ATTACK_SECONDS / length : 1.0f;
+        if (seen > 1.0f) seen = 1.0f;
+        printf("   %-18s %5.2fs %5.0f%% %7.2fm %7.2fm %7.0f%% %7.2fm%s\n",
+               attack->clip, length, seen * 100.0f, travel, left - right,
+               front * 100.0f, low, front <= 0.0f ? "   <-- never in front" : "");
+        (void)high;
+
+        /* A cut is a blade crossing a body, and a body is about half a metre
+           wide. A tip that travels less than that through its whole live
+           window is not cutting anything, whatever the screen is doing. */
+        expect(travel > 0.5f, "the edge travels far enough to cross a body");
+        /* And it moves between steps rather than holding still, which is what
+           a stale pose looks like. */
+        expect(longest > 0.001f, "with the hand moving from step to step");
+        /* Whether the edge is ever in FRONT is reported and not asserted, and
+           only because the fix is a feel number rather than an oversight: a
+           window that never puts the blade forward is plainly a bug, and
+           Sword_Heavy_Combo has one - it is a 4.3 second multi-hit combo of
+           which the attack ever plays 0.55, so the live window lands in its
+           opening wind-up and the first real cut starts just past where the
+           attack ends. Fixing it means the heavy gets a duration of its own,
+           which is how long a heavy takes, which is not a thing to decide in a
+           probe. */
+    }
+}
+
+/* The held weapon lands on the grip its own spec states.
+
+   The rifle constants this replaced put every weapon's fist 0.076m below its
+   own origin, which is the middle of a RIFLE's pistol grip and nothing at all
+   on a katana - whose grip_right is 0.062m back along the tsuka's axis, ON it
+   rather than under it. So the third-person sword was held below its own hilt,
+   at a point 6cm off along it, by a quarter turn authored for a pistol grip.
+
+   The check is that the point the spec names is the point that ends up in the
+   hand. That is a property no per-weapon tuning can drift away from, and it is
+   the same point the first-person solver walks its wrist back from - which is
+   the whole of what makes the two cameras agree. */
+static void check_held_grip(const SkinnedModel* model, const Pose* pose) {
+    struct { const WeaponSpec* spec; const char* what; } held[] = {
+        { &WEAPON_SPEC_KATANA, "katana" },
+        { &WEAPON_SPEC_ASSAULT_RIFLE, "rifle" },
+    };
+    Mat4 hand;
+    if (!skinned_model_bone_matrix(model, pose, "hand_r", &hand)) {
+        printf("  FAIL no hand_r to measure against\n");
+        ++failures;
+        return;
+    }
+    /* Where the palm is: the same short step into it the transform takes. */
+    float palm[3];
+    const float into[3] = { -0.020f, 0.060f, 0.0f };
+    mat4_transform_point(&hand, into, palm);
+
+    for (int i = 0; i < 2; ++i) {
+        Mat4 grip;
+        if (!character_held_weapon_transform(model, pose, held[i].spec, &grip)) {
+            printf("  FAIL %s has no held transform\n", held[i].what);
+            ++failures;
+            continue;
+        }
+        float landed[3];
+        mat4_transform_point(&grip, held[i].spec->grip_right, landed);
+        float dx = landed[0] - palm[0], dy = landed[1] - palm[1],
+              dz = landed[2] - palm[2];
+        char label[64];
+        snprintf(label, sizeof label, "%s's stated grip is in the palm",
+                 held[i].what);
+        check(label, sqrtf(dx * dx + dy * dy + dz * dz), 0.0f, 1e-4f);
+    }
+}
+
 int main(void) {
     SkinnedModel model;
     char error[256];
@@ -468,11 +644,15 @@ int main(void) {
                              &WEAPON_SPEC_ASSAULT_RIFLE.clips);
         /* An instance by hand rather than through character_instance_init,
            which lives with the drawing and wants a GL context to free. All the
-           transform reads off one is the pose, the rig index and the hang
-           blend. */
+           transform reads off one is the pose, the rig index, the hang blend -
+           and the weapon, which it needs now that where a fist closes on a mesh
+           is the weapon's own fact rather than a rifle's constant standing in
+           for every weapon there is. A body holding nothing has no muzzle, which
+           is the honest answer and was previously a rifle's. */
         CharacterInstance instance;
         memset(&instance, 0, sizeof instance);
         instance.ready = 1;
+        instance.weapon = &WEAPON_SPEC_ASSAULT_RIFLE;
         for (int i = 0; i < 360; ++i)
             character_animation_update(&animation, &model, &state, 1.0f / 120.0f);
         character_animation_pose(&animation, &model, &instance.pose);
@@ -549,6 +729,19 @@ int main(void) {
 
     check_clip_set(&model, &WEAPON_SPEC_ASSAULT_RIFLE);
     check_clip_set(&model, &WEAPON_SPEC_KATANA);
+    check_swing_moves_the_hand(&model);
+
+    printf("\n8. a held weapon sits on the grip its own spec names\n");
+    {
+        CharacterVisualState idle = strafing(0.0f, 1.0f);
+        character_animation_init(&animation, &model,
+                                 &WEAPON_SPEC_KATANA.clips);
+        for (int i = 0; i < 240; ++i)
+            character_animation_update(&animation, &model, &idle, 1.0f / 120.0f);
+        Pose pose;
+        character_animation_pose(&animation, &model, &pose);
+        check_held_grip(&model, &pose);
+    }
 
     printf("\n%s\n", failures ? "FAILURES" : "all checks passed");
     return failures ? 1 : 0;

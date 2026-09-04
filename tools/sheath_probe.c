@@ -205,7 +205,7 @@ int main(void) {
        one at negative x - which is the same question as above, asked from the
        side that would put a katana in the wrong fist. */
     Mat4 held;
-    if (character_held_weapon_transform(&model, &pose, &held))
+    if (character_held_weapon_transform(&model, &pose, &WEAPON_SPEC_KATANA, &held))
         expect(held.m[12] < hips.m[12], "the sword is in the RIGHT hand");
     else
         expect(0, "the rig has a hand to hold the sword with");

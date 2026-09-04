@@ -28,7 +28,9 @@ DEPS := $(OBJS:.o=.d)
 PROBE := bin/viewmodel_probe
 PROBE_CC := gcc
 PROBE_SRCS := tools/viewmodel_probe.c src/render/arm_placement.c \
-              src/render/viewmodel_clip_arms.c \
+              src/render/viewmodel_clip_arms.c src/render/viewmodel_neck.c \
+              src/render/character_transform.c src/render/character_animation.c \
+              src/render/weapon_grip.c \
               src/gameplay/viewmodel_pose.c src/gameplay/weapon_spec.c \
               src/gameplay/weapon_specs.c src/gameplay/sights.c \
               src/render/skinned_model_glb.c src/render/skinned_pose.c \
@@ -43,7 +45,7 @@ PROBE_SRCS := tools/viewmodel_probe.c src/render/arm_placement.c \
 # when a clip changes is a subtraction. Neither is something to settle by eye.
 BODY_PROBE := bin/body_probe
 BODY_PROBE_SRCS := tools/body_probe.c src/render/character_animation.c \
-              src/render/character_transform.c \
+              src/render/character_transform.c src/render/weapon_grip.c \
               src/gameplay/weapon_specs.c src/gameplay/weapon_spec.c \
               src/gameplay/viewmodel_pose.c \
               src/gameplay/sights.c \
@@ -55,6 +57,7 @@ BODY_PROBE_SRCS := tools/body_probe.c src/render/character_animation.c \
 # tools/sheath_probe.c.
 SHEATH_PROBE := bin/sheath_probe
 SHEATH_PROBE_SRCS := tools/sheath_probe.c src/render/character_transform.c \
+              src/render/weapon_grip.c \
               src/render/arm_placement.c src/gameplay/action_track.c \
               src/render/character_animation.c \
               src/gameplay/weapon_specs.c src/gameplay/weapon_spec.c \
@@ -68,6 +71,7 @@ SHEATH_PROBE_SRCS := tools/sheath_probe.c src/render/character_transform.c \
 MELEE_PROBE := bin/melee_probe
 MELEE_PROBE_SRCS := tools/melee_probe.c src/gameplay/melee_swing.c \
               src/gameplay/weapon.c src/gameplay/traversal.c \
+              src/render/viewmodel_neck.c \
               src/gameplay/action_track.c src/gameplay/third_person_camera.c \
               src/gameplay/combatant.c src/gameplay/damage_number.c \
               src/gameplay/spawn_select.c src/gameplay/arena.c \

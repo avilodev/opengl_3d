@@ -53,7 +53,7 @@ static void draw_held_weapon(const SkinnedModel* model, const Pose* pose,
        gun's barrel is - see character_transform.h. Composed there rather than
        here so the drawn gun and the streak leaving it cannot be two answers. */
     Mat4 grip;
-    if (!character_held_weapon_transform(model, pose, &grip)) return;
+    if (!character_held_weapon_transform(model, pose, spec, &grip)) return;
 
     glPushMatrix();
     glMultMatrixf(grip.m);
@@ -237,8 +237,29 @@ void character_renderer_update(CharacterLibrary* library, CharacterInstance* ins
                                  reaching);
 
     character_animation_update(&instance->animation, model, state, delta_time);
-    if (!visible) return;
+
+    /* The POSE is composed whatever `visible` says, and only the skinning below
+       is skipped. The two used to be on the same side of that test, and the
+       difference between them is the difference between a drawing and a fact:
+       skinned vertices are for looking at, and the pose is where this body's
+       hands ARE.
+
+       Something outside the renderer reads it. A melee weapon's hit volume is
+       swept off the body's own hand - see character_weapon_world and main.c -
+       and in first person `visible` is 0, so the hand this returned was the
+       BIND pose and stayed there: arms at the sides, the blade hanging into the
+       floor beside the player's foot, identical on every frame. A sweep between
+       two identical transforms has no length, so a sword that swung perfectly
+       well on screen cut a stationary segment by the player's boot and nothing
+       else. The bug was invisible from the chair in the exact way a hit test
+       always is - the swing plays, and the damage simply never arrives.
+
+       Composing it costs one clip sample and a few blends over seventy bones.
+       The skinning it still guards is per-vertex, which is the cost that
+       actually wanted saving. */
     character_animation_pose(&instance->animation, model, &instance->pose);
+    if (!visible) return;
+
     skinned_model_skin(model, &instance->pose, &instance->skin);
     /* Straight onto the card, here rather than in the draw: this runs once a
        frame per body and the draw may not run at all, or - if the world ever
