@@ -137,6 +137,32 @@ typedef struct {
     int next;
 } MeleeAttack;
 
+/* The stances a melee weapon is carried in when nothing else is driving the
+   hands. Three, and not a continuum, because each one answers a different
+   question the player is asking of the screen: where the sword is when they
+   are fighting, where it goes when they need to see past it, and where it
+   drops to when they have stopped using it.
+
+   They are blended rather than switched between, and the weights that do it
+   live on the Weapon rather than here - a spec is what a weapon IS and a blend
+   is what it is doing. What that buys is that a stance interrupted halfway
+   into another one eases on from where it actually is, instead of snapping
+   back to a `from` it never reached. See weapon_melee_carry. */
+typedef enum {
+    /* Down at the side, out of the frame. Where the hands go when the sword
+       has been idle long enough that it is about to put itself away - the
+       first half of the same clock, so the hands come down before the blade
+       goes in. */
+    MELEE_CARRY_REST,
+    /* The one the player spends their visible life looking at. */
+    MELEE_CARRY_GUARD,
+    /* Canted across and out of the way, for a wall run or a slide - the
+       manoeuvres whose whole read is the ground and the wall, and which a
+       blade held up through the middle of the frame is in the way of. */
+    MELEE_CARRY_MOMENTUM,
+    MELEE_CARRY_COUNT
+} MeleeCarry;
+
 /* Everything that is true of a melee weapon and of nothing else.
 
    The blade segment is the whole of what a swing means geometrically: two
@@ -169,12 +195,48 @@ typedef struct MeleeSpec {
        is what makes this one number rather than a pose. */
     float sheathed_offset;
 
+    /* Where the off hand holds the SCABBARD while the weapon is worn, in the
+       scabbard's own frame - the same axes as the blade, origin at the mouth.
+
+       A katana worn on the hip is held with both hands the moment anyone
+       thinks about drawing it: the left steadies the saya and the right comes
+       across the body onto the tsuka. This is the left one's point. It is
+       measured DOWN the scabbard from the koiguchi, so it is negative along
+       the blade axis, and it is far enough down to clear the right hand, which
+       is up on the hilt at sheathed_offset the other way. */
+    float saya_grip[3];
+
     /* What this weapon can do, and the three ways in. The entry points are
        indices into the table rather than a second copy of the data, so a
        retuned attack is retuned once. */
     MeleeAttack attacks[MELEE_ATTACK_MAX];
     int attack_count;
     int light_attack, heavy_attack, block_attack;
+
+    /* Where the weapon sits in each stance, in camera space - the poses the
+       blend above interpolates between, and the poses the first-person hands
+       are solved onto. One per MeleeCarry, indexed by it.
+
+       Camera space and not the model's, because a carry is a statement about
+       where a weapon is ON THE SCREEN: it is authored by looking at it. The
+       grips are in the model's frame and stay there; composing the two is
+       viewmodel_arms' problem and not this file's. */
+    ViewmodelPose carries[MELEE_CARRY_COUNT];
+
+    /* The hand that is NOT on the hilt: where its wrist sits and which way its
+       fingers run, both in camera space.
+
+       A sword this size is swung one-handed here, so the off hand has nothing
+       to hold and is not given anything to hold. Stated rather than solved,
+       because there is no grip to solve it onto - and stated as a WRIST, not a
+       grip, because the walk back down the fingers that wrist_from_grip does
+       for a closed fist is exactly what a hand holding nothing does not do.
+
+       It is one placement for every stance. The hand is not doing anything in
+       any of them, and three ways of doing nothing is three numbers to keep in
+       agreement for no gain. */
+    float off_hand[3];
+    float off_hand_dir[3];
 
     /* Getting the sword out of the scabbard and back into it.
 
@@ -215,7 +277,14 @@ typedef enum {
     WEAPON_HOLD_TWO_POINT,
     /* Two hands at one place, the support hand wrapped around the firing one.
        A pistol, which has no forward furniture to hold. */
-    WEAPON_HOLD_HANDS_TOGETHER
+    WEAPON_HOLD_HANDS_TOGETHER,
+    /* Two hands in a row along one grip, both wrapped around the same shaft.
+       A katana's tsuka, where the forward hand sits under the guard and the
+       rear one at the butt - which is a different thing from a rifle's two
+       points, because there is no pistol grip for either hand to close on and
+       both wrists do the same job. */
+    WEAPON_HOLD_HILT,
+    WEAPON_HOLD_KIND_COUNT
 } WeaponHoldKind;
 
 typedef struct {
@@ -255,7 +324,20 @@ typedef struct {
     float view_right;
     float view_down;
     float view_forward;
-    float view_fov;
+
+    /* How much of the head's pitch this weapon's carry gives up to the neck,
+       0 to 1. See render/viewmodel_neck.h for what the neck is; this is the
+       one number per weapon that says how much of it a given weapon wants.
+
+       A scalar and not a flag, deliberately. The relative motion is most of
+       what makes a first-person view read as a body, and it is also a cost:
+       this game has a grapple and a wallrun and the player aims upward
+       constantly, which is exactly when a following viewmodel leaves the
+       frame. That cost is not the same for a katana as for a carbine, so it is
+       stated per weapon. Zero is exactly the welded viewmodel that shipped
+       before the neck existed, which makes retreating from it one number here
+       rather than a revert. */
+    float neck_follow;
 
     /* --- the hold ---
        Where the hands close on this gun, in the model's own space: +x right,
@@ -300,15 +382,15 @@ typedef struct {
 
 } WeaponSpec;
 
-/* Fast, light, and forgiving: the sidearm this project started with. Kept
-   because it is a good gun, not yet handed to the player. */
-extern const WeaponSpec WEAPON_SPEC_AUTO_PISTOL;
+/* One extern per weapon, generated from the one list. What each weapon IS is
+   said in weapon_list.h, beside its name; what it is made of is said in
+   weapon_specs.c. Neither is repeated here, because a third place to say it is
+   a third place for it to be wrong.
 
-/* The issued weapon. Slower and heavier, and unmagnified by choice. */
-extern const WeaponSpec WEAPON_SPEC_ASSAULT_RIFLE;
-
-/* The melee alternative: a katana, worn on the hip and drawn to use. */
-extern const WeaponSpec WEAPON_SPEC_KATANA;
+   To iterate over these rather than name one, include weapon_registry.h. */
+#define WEAPON(id) extern const WeaponSpec WEAPON_SPEC_##id;
+#include "gameplay/weapon_list.h"
+#undef WEAPON
 
 /* The gun half, or NULL on a weapon that is not a gun.
 
@@ -382,6 +464,16 @@ const ActionTrack* weapon_spec_reload_sequence(const WeaponSpec* spec);
    track states it too; this is for the code that needs to know the hand is ON
    the magazine rather than merely somewhere along the way. */
 const float* weapon_spec_mag_grip(const WeaponSpec* spec);
+
+/* How far a sheathed sword sits back from the mouth of its scabbard, as a
+   vector in the weapon's own frame: its blade axis, times sheathed_offset.
+
+   Here rather than in either renderer because both of them need it and it is
+   one fact - the third-person hip and the first-person one are the same sword
+   in the same scabbard, and a copy each is how they would come to disagree by
+   a centimetre nobody could see but the probe. Writes zeroes for a weapon
+   whose blade has no length to speak of. */
+void weapon_spec_sheathed_step(const MeleeSpec* melee, float out[3]);
 
 /* Where this gun rests for a given blend of the carries, with nothing animated
    in it - no bob, no sway, no kick, no stow. `sprint`, `reload` and `ads` are

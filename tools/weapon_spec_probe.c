@@ -15,6 +15,7 @@
    the furniture somebody took off it - which is exactly what a re-export that
    renamed a material does, and exactly what nobody notices until a screenshot
    has an iron sight poking through an optic. */
+#include "gameplay/weapon_registry.h"
 #include "gameplay/weapon_spec.h"
 #include "render/static_model.h"
 
@@ -93,12 +94,30 @@ static void check_blade(const WeaponSpec* spec) {
     printf("%s blade\n", spec->name);
     float dz = melee->blade_tip[2] - melee->blade_base[2];
     expect(dz < -0.2f, "the blade runs forward of its base");
-    expect(melee->scabbard_path != NULL, "the scabbard names a mesh");
+
+    /* Being worn is a FEATURE, not something every melee weapon has: a baton
+       carried in the hand has nowhere to go and states no scabbard. So this is
+       not "the scabbard names a mesh" but "the parts of being worn agree with
+       each other". A weapon with a scabbard and no draw track cannot get the
+       blade out of it; one with a draw track and no scabbard draws from thin
+       air. Half-configured is the failure worth catching, and it is the one a
+       new weapon copied from an old one actually makes.
+
+       Checked as a count for the reason check_class_halves is: a fourth part
+       of being worn, added later, fails here loudly rather than passing by not
+       being looked at. */
+    int worn = (melee->scabbard_path != NULL) + (melee->draw_track != NULL) +
+               (melee->sheathe_track != NULL);
+    expect(worn == 0 || worn == 3,
+           "worn on the hip: scabbard, draw and sheathe are all stated or none are");
 
     /* The scabbard is a second file, split out of the same FBX, and it is the
        one the sword is not drawn with - so a rename or a stale path there goes
        unnoticed for exactly as long as nobody sheathes. */
-    if (!melee->scabbard_path) return;
+    if (!melee->scabbard_path) {
+        printf("   ---- carried in the hand, no scabbard\n");
+        return;
+    }
     StaticModel saya;
     char error[256];
     if (static_model_load_glb(&saya, melee->scabbard_path, error, sizeof error))
@@ -107,14 +126,33 @@ static void check_blade(const WeaponSpec* spec) {
         expect(0, error);
 }
 
+/* Every weapon answers to its own name, and no two answer to the same one.
+
+   weapon_registry_find compares against the name the player is shown, so two
+   weapons sharing one is a lookup that silently returns whichever was listed
+   first - and the usual cause is a new weapon copied from an old one whose
+   name never got changed. */
+static void check_names(void) {
+    printf("names\n");
+    for (int i = 0; i < weapon_registry_count(); ++i) {
+        const WeaponSpec* spec = weapon_registry_get(i);
+        expect(spec->name != NULL && spec->name[0] != '\0', "states a name");
+        if (!spec->name) continue;
+        expect(weapon_registry_find(spec->name) == spec, spec->name);
+    }
+}
+
 int main(void) {
-    check_class_halves(&WEAPON_SPEC_AUTO_PISTOL);
-    check_class_halves(&WEAPON_SPEC_ASSAULT_RIFLE);
-    check_class_halves(&WEAPON_SPEC_KATANA);
-    check_mesh(&WEAPON_SPEC_AUTO_PISTOL);
-    check_mesh(&WEAPON_SPEC_ASSAULT_RIFLE);
-    check_mesh(&WEAPON_SPEC_KATANA);
-    check_blade(&WEAPON_SPEC_KATANA);
+    /* Every weapon there is, and not a list of the ones somebody remembered.
+       See include/gameplay/weapon_registry.h for what that used to cost. */
+    printf("%d weapons in the registry\n\n", weapon_registry_count());
+    check_names();
+    for (int i = 0; i < weapon_registry_count(); ++i)
+        check_class_halves(weapon_registry_get(i));
+    for (int i = 0; i < weapon_registry_count(); ++i)
+        check_mesh(weapon_registry_get(i));
+    for (int i = 0; i < weapon_registry_count(); ++i)
+        check_blade(weapon_registry_get(i));
     printf("\n%d failures\n", failures);
     return failures != 0;
 }

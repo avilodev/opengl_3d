@@ -46,6 +46,7 @@ PROBE_SRCS := tools/viewmodel_probe.c src/render/arm_placement.c \
 BODY_PROBE := bin/body_probe
 BODY_PROBE_SRCS := tools/body_probe.c src/render/character_animation.c \
               src/render/character_transform.c src/render/weapon_grip.c \
+              src/render/arm_placement.c \
               src/gameplay/weapon_specs.c src/gameplay/weapon_spec.c \
               src/gameplay/viewmodel_pose.c \
               src/gameplay/sights.c \
@@ -97,6 +98,7 @@ DEATH_PROBE_SRCS := tools/death_probe.c src/gameplay/combatant.c \
 # tools/weapon_spec_probe.c for why each of those is worth a check.
 SPEC_PROBE := bin/weapon_spec_probe
 SPEC_PROBE_SRCS := tools/weapon_spec_probe.c src/gameplay/weapon_spec.c \
+              src/gameplay/weapon_registry.c \
               src/gameplay/weapon_specs.c src/gameplay/viewmodel_pose.c \
               src/gameplay/action_track.c src/gameplay/sights.c \
               src/render/static_model_glb.c src/render/glb.c \
