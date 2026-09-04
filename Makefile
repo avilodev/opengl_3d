@@ -5,6 +5,11 @@ LDFLAGS  := -Linclude/lib
 LDLIBS   := -lglfw3 -lopengl32 -lgdi32 -lm
 
 TARGET := bin/Game.exe
+
+# Stated rather than left to "the first target in the file", because it is no
+# longer the first target in the file: the probe rules sit above `all`, and one
+# of them would otherwise become what a bare `make` does.
+.DEFAULT_GOAL := all
 BUILD_DIR := build
 RUNTIME_DIRS := assets data models
 
