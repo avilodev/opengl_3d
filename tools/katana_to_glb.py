@@ -41,9 +41,9 @@ import fbx
 import fbx_mesh
 import glb_write
 
-SOURCE = 'models/Swords/Katana/Japanese Katana.fbx'
-TEXTURE_DIR = 'models/Swords/Katana/Japanese Katana Texture'
-OUTPUT = 'models/Swords/Katana/katana.glb'
+SOURCE = 'models/weapons/katana/source.fbx'
+TEXTURE_DIR = 'models/weapons/katana/textures'
+OUTPUT = 'models/weapons/katana/katana.glb'
 
 # The scabbard leaves in a file of its own. It is a separate object in every
 # sense that matters at draw time -- worn on the hip while the sword is in the
@@ -52,7 +52,7 @@ OUTPUT = 'models/Swords/Katana/katana.glb'
 # independently. Splitting it here rather than hiding it at draw time also
 # means the sword's own origin and bounds stop counting a part that is not
 # attached to it.
-SAYA_OUTPUT = 'models/Swords/Katana/katana_saya.glb'
+SAYA_OUTPUT = 'models/weapons/katana/katana_saya.glb'
 
 # Butt of the grip to the tip of the blade, in metres. A katana runs about a
 # metre over all -- a 70cm nagasa on a 26cm tsuka -- and every other dimension

@@ -231,7 +231,7 @@ The magnified prism sight is still in the code, drawn from boxes, with the
 stencil pass that gives it its own field of view inside its own circle. Its
 chevron stays in the HUD, because it is painted against a magnified second pass
 of the world rather than against the viewmodel. No weapon carries it now; it is
-what `models/Scopes/Sight_mid` is waiting for.
+what `models/attachments/sight_mid` is waiting for.
 
 Rounds are traced from the eye, so the sight is always honest, but the visible
 streak leaves the barrel of the gun on screen -- off to the right at the hip,
@@ -834,14 +834,31 @@ The aim poses were authored for a pistol, which is the closest the library has
 to a rifle: both hands meet at the grip, so the support hand lands on the
 magwell rather than out on the handguard.
 
-Mesh, skeleton and clips come from `models/animations/`. The two libraries
+Mesh, skeleton and clips come from `models/characters/`. The two libraries
 there share a skeleton: `UAL1_Standard.glb` supplies the body and forty-three
 clips, and `UAL2_Standard.glb` is opened only for its own forty-three, matched
 onto our bones by name. The `_RM` files beside them are the same animations
 with root motion baked in, which is why they are not the ones loaded - the
 controller owns where the body goes.
 
-The rifle comes from `models/Guns/M4/`, and `tools/fbx_to_glb.py` is what puts
+### Where assets live
+
+Three buckets, by what the engine does with a thing rather than by what kind of
+thing it is:
+
+```
+models/weapons/<name>/       m4_carbine, katana, ...   held weapons
+models/attachments/<name>/   sight_close, ...          bolted onto a weapon
+models/characters/                                     rigs and clip libraries
+```
+
+Flat inside each bucket, and deliberately not split into `Guns/` and `Swords/`.
+That hierarchy would duplicate `WeaponClass`, which `weapon_spec.h` already
+states, and would make the taxonomy an argument to have again for every asset
+that does not fit cleanly on one side of it. A weapon folder holds its source
+FBX as `source.fbx`, its maps in `textures/`, and the `.glb` the engine reads.
+
+The rifle comes from `models/weapons/m4_carbine/`, and `tools/fbx_to_glb.py` is what puts
 it in a form the engine reads. Nothing in the toolchain imports FBX, so that
 script is the import step: it parses the binary FBX, triangulates it, bakes the
 node transforms, rotates and scales the result into the viewmodel's own axes and

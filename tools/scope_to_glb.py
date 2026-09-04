@@ -46,9 +46,9 @@ import fbx
 import fbx_mesh
 import glb_write
 
-SOURCE = 'models/Scopes/Sight_close/EOTECH+HWS+EXPS2.fbx'
-TEXTURE_DIR = 'models/Scopes/Sight_close/Textures'
-OUTPUT = 'models/Scopes/Sight_close/sight_close.glb'
+SOURCE = 'models/attachments/sight_close/source.fbx'
+TEXTURE_DIR = 'models/attachments/sight_close/textures'
+OUTPUT = 'models/attachments/sight_close/sight_close.glb'
 
 # Front of the hood to the back of the body, in metres. An EOTech EXPS2 is
 # 3.8 inches, and every other dimension of the model is in proportion to that,

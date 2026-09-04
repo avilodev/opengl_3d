@@ -3,6 +3,7 @@
 #include "gameplay/weapon_tuning.h"
 
 #include <stddef.h>
+#include <math.h>
 
 /* The numbers a gun no longer states, derived from the halves that do state
    themselves. Each one lives here and only here, so there is nowhere for a
@@ -21,6 +22,26 @@ const MeleeSpec* weapon_spec_melee(const WeaponSpec* spec) {
    them is read on a frame the player might be holding anything - and a sight
    height of zero is a weapon that does not drop when it aims, which is what a
    weapon with no sight should do. */
+
+void weapon_spec_sheathed_step(const MeleeSpec* melee, float out[3]) {
+    if (!out) return;
+    out[0] = out[1] = out[2] = 0.0f;
+    if (!melee) return;
+
+    float d[3];
+    float length = 0.0f;
+    for (int c = 0; c < 3; ++c) {
+        d[c] = melee->blade_tip[c] - melee->blade_base[c];
+        length += d[c] * d[c];
+    }
+    length = sqrtf(length);
+    if (length < 1e-6f) return;
+    /* Back along the axis, which is the only direction a curved blade can go
+       in or come out. Negative because the step is from the mouth toward the
+       butt and the axis runs toward the tip. */
+    for (int c = 0; c < 3; ++c)
+        out[c] = -d[c] / length * melee->sheathed_offset;
+}
 
 float weapon_spec_sight_height(const WeaponSpec* spec) {
     const FirearmSpec* gun = weapon_spec_firearm(spec);
@@ -43,7 +64,9 @@ float weapon_spec_ads_fov(const WeaponSpec* spec) {
 
 float weapon_spec_view_ads_fov(const WeaponSpec* spec) {
     const FirearmSpec* gun = weapon_spec_firearm(spec);
-    return gun ? gun->view_ads_fov : spec->view_fov;
+    /* A sword has no optic to narrow anything, so aiming it changes
+       nothing: it stays at the player's own field of view. */
+    return gun ? gun->view_ads_fov : VIEWMODEL_FOV;
 }
 
 float weapon_spec_ads_time(const WeaponSpec* spec) {

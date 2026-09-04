@@ -10,7 +10,7 @@
 const SightSpec SIGHT_HOLOGRAPHIC = {
     .name = "EOTech EXPS2",
     .reticle = WEAPON_RETICLE_HOLOGRAPHIC,
-    .mesh_path = "models/Scopes/Sight_close/sight_close.glb",
+    .mesh_path = "models/attachments/sight_close/sight_close.glb",
 
     /* Printed by tools/scope_to_glb.py, measured from the centre of the
        window down to the flat of the clamp. */

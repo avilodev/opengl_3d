@@ -469,12 +469,12 @@ static void check_held_grip(const SkinnedModel* model, const Pose* pose) {
 int main(void) {
     SkinnedModel model;
     char error[256];
-    if (!skinned_model_load_glb(&model, "models/animations/UAL1_Standard.glb",
+    if (!skinned_model_load_glb(&model, "models/characters/UAL1_Standard.glb",
                                 error, sizeof error)) {
         printf("could not load the rig: %s\n", error);
         return 1;
     }
-    if (!skinned_model_add_clips(&model, "models/animations/UAL2_Standard.glb",
+    if (!skinned_model_add_clips(&model, "models/characters/UAL2_Standard.glb",
                                  error, sizeof error))
         printf("note: extra clips not loaded (%s)\n", error);
 

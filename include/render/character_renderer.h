@@ -49,6 +49,11 @@ typedef struct {
     int sheathed;
 
     CharacterAnimation animation;
+    /* Which weapon the animation's aim clips were resolved against, so a body
+       handed a different one mid-round re-resolves them instead of going on
+       aiming with the last one's. Set by the update; nothing outside it should
+       write this. See character_animation_set_clips. */
+    const WeaponSpec* aim_weapon;
     Pose pose;
     SkinnedInstance skin;
     /* Eased rather than switched, so grabbing and letting go of a ledge lowers

@@ -247,4 +247,42 @@ float character_animation_look_yaw(const CharacterAnimation* animation);
 void character_animation_pose(const CharacterAnimation* animation,
                               const SkinnedModel* model, Pose* out);
 
+/* Which three poses the aim layer blends between, named by the weapon the body
+   is holding. Resolved at init and re-resolved whenever what the body is
+   holding changes - a body can be handed a different weapon mid-round, and the
+   aim clips are the one part of the animation that is a fact about the weapon
+   rather than about the body.
+
+   Everything else on the animation is left alone: a playhead, a facing and an
+   eased aim weight belong to the body and survive it swapping what it carries.
+
+   A NULL clip set, or a name the rig has not got, leaves the layer resolving to
+   nothing, which is the empty-hands look rather than a fallback. Note that a
+   weapon with no aim pitch to speak of names ONE pose three times - a sword
+   does - so a stale set of these is silent: the body goes on aiming with the
+   sword's single pose while holding a rifle, and neither the mesh in its hand
+   nor the rounds it fires say anything is wrong. */
+void character_animation_set_clips(CharacterAnimation* animation,
+                                   const SkinnedModel* model,
+                                   const WeaponClipSet* clips);
+
+/* Puts one or both hands on a point in the MODEL's own space, by solving the
+   two bones of each arm.
+
+   The pose is an input as well as an output: the shoulders are wherever the
+   clip and the layers above it left them, and only the two bones below each
+   shoulder are rewritten. So this is a layer like the aim and the twist, and
+   it goes last for the same reason they go in the order they do - it has to
+   see where the shoulders actually ended up.
+
+   Either target may be NULL, which leaves that arm alone. A target further
+   away than the arm is long is reached AT rather than reached: the arm
+   straightens toward it, which is what an arm does.
+
+   It knows nothing about what is being held. The caller works out the points -
+   a hilt, a scabbard, a ledge - and this puts the hands on them. */
+void character_animation_reach_hands(const SkinnedModel* model,
+                                     const float* right_target,
+                                     const float* left_target, Pose* pose);
+
 #endif

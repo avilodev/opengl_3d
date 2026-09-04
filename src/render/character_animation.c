@@ -366,6 +366,18 @@ static void resolve_twist_bones(CharacterAnimation* animation, const SkinnedMode
         if (animation->twist_node[i] >= 0) animation->twist_count++;
 }
 
+void character_animation_set_clips(CharacterAnimation* animation,
+                                   const SkinnedModel* model,
+                                   const WeaponClipSet* clips) {
+    if (!animation || !model) return;
+    /* A body holding nothing resolves no aim clips, which leaves the layer
+       weightless and the locomotion clips alone with the arms - which is what
+       empty hands should look like anyway. */
+    for (int i = 0; i < CHARACTER_AIM_COUNT; ++i)
+        animation->aim_clip[i] = clips && clips->aim[i]
+            ? skinned_model_find_clip(model, clips->aim[i]) : -1;
+}
+
 void character_animation_init(CharacterAnimation* animation,
                               const SkinnedModel* model,
                               const WeaponClipSet* clips) {
@@ -373,12 +385,7 @@ void character_animation_init(CharacterAnimation* animation,
     animation->oneshot_clip = -1;
     for (int i = 0; i < CHARACTER_CLIP_COUNT; ++i)
         animation->clip[i] = skinned_model_find_clip(model, ROLES[i].name);
-    /* A body holding nothing resolves no aim clips, which leaves the layer
-       weightless and the locomotion clips alone with the arms - which is what
-       empty hands should look like anyway. */
-    for (int i = 0; i < CHARACTER_AIM_COUNT; ++i)
-        animation->aim_clip[i] = clips && clips->aim[i]
-            ? skinned_model_find_clip(model, clips->aim[i]) : -1;
+    character_animation_set_clips(animation, model, clips);
     /* A rig without these bones gets a mask that moves nothing, so the layer
        drops out and the body falls back to the locomotion clips alone. */
     skinned_model_mask_subtree(model, AIM_UPPER_ROOT, &animation->upper);
@@ -856,6 +863,7 @@ void character_animation_set_grip(CharacterAnimation* animation,
    below consumes. */
 static void reach_two_bone(const float shoulder[3], const float target[3],
                            float upper_length, float lower_length,
+                           const float pole[3],
                            float upper_dir[3], float lower_dir[3]) {
     float to[3];
     for (int i = 0; i < 3; ++i) to[i] = target[i] - shoulder[i];
@@ -878,10 +886,9 @@ static void reach_two_bone(const float shoulder[3], const float target[3],
     /* The part of the pole square to the arm's line: the plane the bend lies
        in. A pole parallel to that line says nothing, so fall back to any
        perpendicular rather than dividing by nothing. */
-    float dot = HANG_ELBOW_POLE[0]*axis[0] + HANG_ELBOW_POLE[1]*axis[1] +
-                HANG_ELBOW_POLE[2]*axis[2];
+    float dot = pole[0]*axis[0] + pole[1]*axis[1] + pole[2]*axis[2];
     float bend[3];
-    for (int i = 0; i < 3; ++i) bend[i] = HANG_ELBOW_POLE[i] - axis[i] * dot;
+    for (int i = 0; i < 3; ++i) bend[i] = pole[i] - axis[i] * dot;
     float length = sqrtf(bend[0]*bend[0] + bend[1]*bend[1] + bend[2]*bend[2]);
     if (length < 1e-5f) {
         bend[0] = axis[1]; bend[1] = -axis[0]; bend[2] = 0.0f;
@@ -940,7 +947,8 @@ static void apply_hang_pose(const CharacterAnimation* animation,
                 for (int c = 0; c < 3; ++c) shoulder[c] += offset[c];
                 reach_two_bone(shoulder, animation->hang_grip,
                                animation->hang_upper_length,
-                               animation->hang_lower_length, upper_dir, lower_dir);
+                               animation->hang_lower_length, HANG_ELBOW_POLE,
+                               upper_dir, lower_dir);
                 for (int c = 0; c < 3; ++c) target[c] = upper_dir[c];
             } else if (reaching && node == animation->hang_lower_l) {
                 for (int c = 0; c < 3; ++c) target[c] = lower_dir[c];
@@ -1125,6 +1133,117 @@ static void compose_base(const CharacterAnimation* animation,
         float t = 1.0f - animation->fade / FADE_SECONDS;
         skinned_model_blend(model, &animation->fade_from, out,
                             smoothstepf(clampf(t, 0, 1)), out);
+    }
+}
+
+/* One arm's two bones, pointed so the hand lands on `target`. Returns 0 if the
+   rig has not got the bones, in which case the pose is untouched. */
+/* Past this much of its own length an arm is straight, and a straight arm
+   aimed at something it cannot touch is worse than one left alone: it points
+   from the shoulder along the line to the target, and for a hand crossing to
+   the far hip that line runs through the chest. The refusal is the difference
+   between a hand that has not arrived and a forearm inside the ribcage. */
+#define REACH_LIMIT 0.97f
+
+static int reach_arm(const Skeleton* skeleton, const Mat4 global[], Pose* pose,
+                     const char* upper_name, const char* lower_name,
+                     const char* hand_name, const float target[3],
+                     const float pole[3],
+                     float upper_dir[3], float lower_dir[3]) {
+    short upper = find_node(skeleton, upper_name);
+    short lower = find_node(skeleton, lower_name);
+    if (upper < 0 || lower < 0) return 0;
+    float upper_length = bone_length(skeleton, lower_name);
+    float lower_length = bone_length(skeleton, hand_name);
+    if (upper_length < 1e-5f || lower_length < 1e-5f) return 0;
+
+    /* The shoulder: the upper arm's own origin, which is its parent's
+       position plus its own offset turned into the model's space. */
+    int parent = skeleton->parent[upper];
+    float shoulder[3] = {0.0f, 0.0f, 0.0f};
+    if (parent >= 0) {
+        shoulder[0] = global[parent].m[12];
+        shoulder[1] = global[parent].m[13];
+        shoulder[2] = global[parent].m[14];
+        float offset[3];
+        mat4_transform_direction(&global[parent], pose->local[upper].translation,
+                                 offset);
+        for (int c = 0; c < 3; ++c) shoulder[c] += offset[c];
+    }
+    float to[3];
+    float span = 0.0f;
+    for (int c = 0; c < 3; ++c) {
+        to[c] = target[c] - shoulder[c];
+        span += to[c] * to[c];
+    }
+    span = sqrtf(span);
+    if (span > (upper_length + lower_length) * REACH_LIMIT) return 0;
+
+    reach_two_bone(shoulder, target, upper_length, lower_length, pole,
+                   upper_dir, lower_dir);
+    return 1;
+}
+
+/* Points one bone along a model-space direction, leaving its roll wherever the
+   minimal rotation puts it. The same three steps apply_hang_pose takes, and
+   split out here because two arms want them four times. */
+static void point_along(const Skeleton* skeleton, const Mat4 global[],
+                        int node, const float dir[3], Pose* pose) {
+    float axis[3];
+    if (!rest_axis(skeleton, node, axis)) return;
+    float length = sqrtf(dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2]);
+    if (length < 1e-6f) return;
+    float unit[3] = {dir[0]/length, dir[1]/length, dir[2]/length};
+    int parent = skeleton->parent[node];
+    float local[3];
+    axis_in_parent(parent >= 0 ? &global[parent] : NULL, unit, local);
+    quat_between(axis, local, pose->local[node].rotation);
+}
+
+void character_animation_reach_hands(const SkinnedModel* model,
+                                     const float* right_target,
+                                     const float* left_target, Pose* pose) {
+    if (!model || !pose || (!right_target && !left_target)) return;
+    const Skeleton* skeleton = &model->skeleton;
+
+    short upper_r = find_node(skeleton, "upperarm_r");
+    short lower_r = find_node(skeleton, "lowerarm_r");
+    short upper_l = find_node(skeleton, "upperarm_l");
+    short lower_l = find_node(skeleton, "lowerarm_l");
+    float ru[3], rl[3], lu[3], ll[3];
+    int did_r = 0, did_l = 0;
+
+    /* One ordered pass, parents before children, for the reason apply_hang_pose
+       makes it: pointing a bone needs its parent's global, and rewriting a
+       shoulder's child changes nothing above it. */
+    Mat4 global[SKIN_MAX_NODES];
+    for (int i = 0; i < skeleton->node_count; ++i) {
+        int node = skeleton->order[i];
+
+        if (right_target && node == upper_r) {
+            /* Mirrored: HANG_ELBOW_POLE breaks toward the model's own left,
+               which is out of the body for the left arm and INTO it for the
+               right. */
+            const float pole_r[3] = {-HANG_ELBOW_POLE[0], HANG_ELBOW_POLE[1],
+                                     HANG_ELBOW_POLE[2]};
+            did_r = reach_arm(skeleton, global, pose, "upperarm_r", "lowerarm_r",
+                              "hand_r", right_target, pole_r, ru, rl);
+            if (did_r) point_along(skeleton, global, node, ru, pose);
+        } else if (did_r && node == lower_r) {
+            point_along(skeleton, global, node, rl, pose);
+        } else if (left_target && node == upper_l) {
+            did_l = reach_arm(skeleton, global, pose, "upperarm_l", "lowerarm_l",
+                              "hand_l", left_target, HANG_ELBOW_POLE, lu, ll);
+            if (did_l) point_along(skeleton, global, node, lu, pose);
+        } else if (did_l && node == lower_l) {
+            point_along(skeleton, global, node, ll, pose);
+        }
+
+        const Transform* local = &pose->local[node];
+        Mat4 matrix = mat4_from_trs(local->translation, local->rotation,
+                                    local->scale);
+        int parent = skeleton->parent[node];
+        global[node] = parent < 0 ? matrix : mat4_multiply(global[parent], matrix);
     }
 }
 

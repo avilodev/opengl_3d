@@ -14,7 +14,7 @@ void third_person_camera_init(ThirdPersonCamera* camera) {
        starts in. It spawned the player looking at the sky. */
     camera->pitch_degrees = 0.0f;
     camera->distance = 0.0f;
-    camera->target_height = 2.12f;
+    camera->target_height = VIEW_EYE_HEIGHT;
     camera->fov_degrees = VIEW_BASE_FOV;
     camera->roll_degrees = 0.0f;
     camera->lean_offset = 0.0f;
@@ -242,7 +242,7 @@ void third_person_camera_update(ThirdPersonCamera* camera, const CameraCommand* 
     if (player->wall_run.active)
         target_roll = wall_screen_side(camera, player) * VIEW_WALL_RUN_ROLL;
     float target_height = camera->is_first_person
-        ? (player->is_crouching ? 1.18f : 2.12f)
+        ? (player->is_crouching ? VIEW_EYE_HEIGHT_CROUCHED : VIEW_EYE_HEIGHT)
         : (player->is_crouching ? 0.92f : 1.35f);
     /* Hanging drops the eyes toward the lip the player is holding, which is the
        second half of the tell the stowed weapon starts. Eased by the same blend

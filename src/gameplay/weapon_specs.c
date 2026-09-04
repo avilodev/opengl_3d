@@ -1,5 +1,6 @@
 #include "gameplay/weapon_spec.h"
 #include "gameplay/sight_spec.h"
+#include "gameplay/movement_tuning.h"
 
 #include <stddef.h>
 
@@ -55,7 +56,6 @@ const WeaponSpec WEAPON_SPEC_AUTO_PISTOL = {
     .view_right = 0.22f,
     .view_down = 0.19f,
     .view_forward = 0.46f,
-    .view_fov = 55.0f,
 
     /* The rifle's, and for the rifle's reasons - a sidearm is carried in the
        same hands off the same shoulders. See the assault rifle's entry. */
@@ -158,7 +158,7 @@ const WeaponSpec WEAPON_SPEC_ASSAULT_RIFLE = {
     .damage = 47.0f,
     .range = 300.0f,
 
-    .mesh_path = "models/Guns/M4/m4_carbine.glb",
+    .mesh_path = "models/weapons/m4_carbine/m4_carbine.glb",
     /* The gun on screen, about 1.6x the size it used to be. Two thirds of
        that is the narrower viewmodel projection and one third is the gun
        sitting closer to the eye, because neither would do it alone: this
@@ -171,7 +171,6 @@ const WeaponSpec WEAPON_SPEC_ASSAULT_RIFLE = {
     .view_right = 0.148f,
     .view_down = 0.125f,
     .view_forward = 0.38f,
-    .view_fov = 43.0f,
 
     /* How much of the head's pitch the gun gives up to the neck - see
        render/viewmodel_neck.h, and weapon_spec.h for why this is a scalar.
@@ -220,18 +219,33 @@ const WeaponSpec WEAPON_SPEC_ASSAULT_RIFLE = {
    That the middle of a katana draw goes behind the camera is not a mistake in
    the numbers. It is where the sword is: it is beside and behind the hip, and
    it comes forward only once it is out. */
+/* Two of these keys are anchored to the SCABBARD rather than to the view, and
+   say so by adding VIEWMODEL_HIP_BEHIND_EYE to their depth: the grip at the
+   koiguchi and the point out along the blade's axis are both facts about where
+   the sheath is, and the sheath sits behind the eye as well as below it.
+
+   Stated as the constant rather than folded into the literal so they move with
+   it. They did not, once, and the copy of the scabbard placement in
+   tools/sheath_probe.c did not either, so a draw whose first grip missed the
+   sword by 25cm passed its own check. There is no ACTION_ON_SCABBARD frame to
+   put them in - the honest fix - and this is what stands in for one. */
 static const ActionKey KATANA_DRAW_KEYS[] = {
-    /* The hand at rest by the side, which is where a draw starts from. */
+    /* The hand ON the tsuka, which is where a draw starts from now: a worn
+       sword is carried with the weapon hand already on the handle, so a track
+       that began by the side would snap the hand across to the hilt on the
+       frame the draw started. Same point as the grip key below - the beat
+       between them is the hand taking hold before it pulls. */
     { .at = 0.00f, .ease = ACTION_EASE_SMOOTH,
-      .hand_frame = ACTION_IN_VIEW, .hand = { 0.10f, -0.85f, -0.20f } },
+      .hand_frame = ACTION_IN_VIEW,
+      .hand = { -0.143f, -0.752f, -0.170f + VIEWMODEL_HIP_BEHIND_EYE } },
     /* Down and across to the tsuka, and closed on it. */
     { .at = 0.28f, .ease = ACTION_EASE_SMOOTH,
-      .hand_frame = ACTION_IN_VIEW, .hand = { -0.143f, -0.752f, -0.170f } },
+      .hand_frame = ACTION_IN_VIEW, .hand = { -0.143f, -0.752f, -0.170f + VIEWMODEL_HIP_BEHIND_EYE } },
     /* Out along the blade's own axis, the whole 0.79m of it. SNAP because a
        draw's energy is all at the start: the arm is already moving when the
        blade begins to leave, and it slows as the tip comes clear. */
     { .at = 0.62f, .ease = ACTION_EASE_SNAP,
-      .hand_frame = ACTION_IN_VIEW, .hand = { -0.265f, -0.877f, 0.604f } },
+      .hand_frame = ACTION_IN_VIEW, .hand = { -0.265f, -0.877f, 0.604f + VIEWMODEL_HIP_BEHIND_EYE } },
     /* And round into the ready pose, which is where Sword_Idle holds it. */
     { .at = 1.00f, .ease = ACTION_EASE_SMOOTH,
       .hand_frame = ACTION_IN_VIEW, .hand = { 0.203f, -0.652f, -0.058f } },
@@ -251,13 +265,15 @@ static const ActionKey KATANA_SHEATHE_KEYS[] = {
       .hand_frame = ACTION_IN_VIEW, .hand = { 0.203f, -0.652f, -0.058f } },
     /* Sword brought back and lined up with the mouth, tip first. */
     { .at = 0.42f, .ease = ACTION_EASE_SMOOTH,
-      .hand_frame = ACTION_IN_VIEW, .hand = { -0.265f, -0.877f, 0.604f } },
+      .hand_frame = ACTION_IN_VIEW, .hand = { -0.265f, -0.877f, 0.604f + VIEWMODEL_HIP_BEHIND_EYE } },
     /* Home. */
     { .at = 0.86f, .ease = ACTION_EASE_DRIVE,
-      .hand_frame = ACTION_IN_VIEW, .hand = { -0.143f, -0.752f, -0.170f } },
-    /* And the hand off it, back to the side. */
+      .hand_frame = ACTION_IN_VIEW, .hand = { -0.143f, -0.752f, -0.170f + VIEWMODEL_HIP_BEHIND_EYE } },
+    /* And the hand stays ON it, which is how a worn sword is carried - see
+       the draw's first key. */
     { .at = 1.00f, .ease = ACTION_EASE_SMOOTH,
-      .hand_frame = ACTION_IN_VIEW, .hand = { 0.10f, -0.85f, -0.20f } },
+      .hand_frame = ACTION_IN_VIEW,
+      .hand = { -0.143f, -0.752f, -0.170f + VIEWMODEL_HIP_BEHIND_EYE } },
 };
 
 static const ActionTrack KATANA_SHEATHE = {
@@ -275,7 +291,7 @@ static const MeleeSpec KATANA_MELEE = {
     .blade_base = { 0.0f, 0.0f, -0.14f },
     .blade_tip  = { 0.0f, 0.0f, -0.907f },
 
-    .scabbard_path = "models/Swords/Katana/katana_saya.glb",
+    .scabbard_path = "models/weapons/katana/katana_saya.glb",
     /* Left hip, edge up, blade running back along it so the tsuka sits forward
        where the right hand can cross to it.
 
@@ -295,6 +311,12 @@ static const MeleeSpec KATANA_MELEE = {
        0.7939m inside a saya that is 0.7907m deep, which is in as far as it
        goes. */
     .sheathed_offset = 0.1131f,
+
+    /* 15cm down the saya from its mouth. The right hand's grip sits at
+       sheathed_offset - grip_right along the same axis, about 5cm ABOVE the
+       mouth on the tsuka, so the two fists end up roughly 20cm apart on one
+       line: the left low on the scabbard, the right up on the handle. */
+    .saya_grip = { 0.0f, 0.0f, -0.15f },
 
     .attacks = {
         /* 0-2: the light chain. The active windows are the middle of each
@@ -334,46 +356,77 @@ static const MeleeSpec KATANA_MELEE = {
        body forward hid the arms as well. Applied to the ARMS as well as the
        sword - a shift given to one and not the other is how a hilt ends up
        floating in front of a fist reaching for where it used to be. */
-    .carries = {
-        /* Camera space: +x right, +y up, -z forward, rotations applied about
-           the sword's own origin as yaw, then pitch, then roll. The origin is
-           the middle of the tsuka, so these place the HANDS and the blade
-           follows out of them - a positive pitch raises the tip, because the
-           mesh runs -z toward it.
+    /* Camera space: +x right, +y up, -z forward, rotations applied about the
+       sword's own origin as yaw, then pitch, then roll. The origin is the
+       middle of the tsuka, so this places the HAND and the blade follows out
+       of it - a positive pitch raises the tip, because the mesh runs -z toward
+       it, so a steeply negative one hangs the blade at the floor.
 
-           [MELEE_CARRY_REST] Down at the side, tip angled at the floor. Off
-           the bottom of the frame at 0.58 below the eye against a 43 degree
-           projection, and off it because that is where a hand at a hip is:
-           VIEWMODEL_HIP_BELOW_EYE puts a belt 0.75 down, and this is a hand
-           resting a little above one. Nothing here is aiming at invisible. */
-        [MELEE_CARRY_REST] = {
-            0.17f, -0.58f, -0.26f,
-            -28.0f, 4.0f, 0.0f,
-            0.0f, 0.0f,
-        },
-        /* [MELEE_CARRY_GUARD] The one the player sees. Hands low and forward,
-           at about the height the rifle's receiver sits, and the blade rising
-           left across the frame - the tip lands a fifth of the way left of
-           centre and three quarters of the way up, which is a blade that
-           reads as a blade rather than as a bar down the middle of the
-           screen. */
-        [MELEE_CARRY_GUARD] = {
-            0.09f, -0.16f, -0.42f,
-            34.0f, 18.0f, 8.0f,
-            0.0f, 0.0f,
-        },
-        /* [MELEE_CARRY_MOMENTUM] Canted across and out of the way. A wall run
-           already banks the view sixteen degrees and a slide is a low fast
-           read of the floor; a blade held up through the middle of either is a
-           blade across the thing the player is trying to see. So the tip goes
-           left and level and the hands stay right, which keeps the sword on
-           screen without it being in the way. */
-        [MELEE_CARRY_MOMENTUM] = {
-            0.14f, -0.26f, -0.36f,
-            10.0f, 46.0f, -22.0f,
-            0.0f, 0.0f,
-        },
+       One hold, stated once and named three times. The three stances are what
+       the blend interpolates between and they are deliberately identical: the
+       sword is carried in the right hand, tip down, and there is no version of
+       that which a wall run or an idle clock should change yet. The machinery
+       stays because differentiating them later is editing these numbers rather
+       than rebuilding the blend - and while they agree, nothing on screen
+       moves when the stance does.
+
+       Down at the right side, tip toward the floor, canted a little forward
+       and inward so the blade is foreshortened rather than edge-on and reads
+       as a blade. The tsuka and the tsuba sit low on the right of the frame
+       and the rest of it runs off the bottom, which is where a sword carried
+       at rest in one hand actually is.
+
+       The hand sits at -0.30, two centimetres off ARMS_SHOULDER_DOWN: on the
+       shoulder line, where a hand carrying something at rest is. That is the
+       number this pose is anchored to and the one that was wrong before, at
+       -0.05 - a hand authored 27cm ABOVE its own shoulder is the sword being
+       held up under the chin, whatever the pitch below it says.
+
+       Worth knowing what the shoulder line costs, because it is not free and
+       nothing else in this file pays it: a hand exactly on it can only be on
+       screen at all if the arm can span SH*(1/tan(fov/2) + 1/tan(fov/2+4)),
+       which at this frustum is 0.85m against the 0.43m a comfortable arm has.
+       The rifle answers that by sitting 20cm above the line and the pistol the
+       same. This pose gets away with being ON it because the off hand is
+       pushed out far enough to drag the whole shoulder line forward to -0.10 -
+       which is also what brings the sword arm back to 0.75 of its reach from
+       the 0.87 it sits at when the idle hand is tucked in.
+
+       Thirty-two degrees below horizontal rather than straight down, and the
+       angle answers a measured cliff rather than a taste. With the hand on the
+       shoulder line the frame ends just under it, so whatever the blade does
+       below that is off screen: at 30 degrees the whole blade is in, at 34 the
+       tip is on the edge, by 40 there is 18% left and straight down there is
+       nothing but a fist. What keeps it in shot is that the tip lands 1.2m out
+       - perspective, not a shallower sword.
+
+       On screen: the hand at 0.42 across and -0.93 down, the tsuba at 0.29,
+       -0.93 and the tip at 0.03, -0.93. The sword lies low across the bottom
+       of the frame from the right hand toward the centre, tip toward the
+       ground ahead. */
+    .carries = {
+        [MELEE_CARRY_REST]     = { 0.24f, -0.30f, -0.46f, -32.0f, 15.0f, 0.0f,
+                                   0.0f, 0.0f },
+        [MELEE_CARRY_GUARD]    = { 0.24f, -0.30f, -0.46f, -32.0f, 15.0f, 0.0f,
+                                   0.0f, 0.0f },
+        [MELEE_CARRY_MOMENTUM] = { 0.24f, -0.30f, -0.46f, -32.0f, 15.0f, 0.0f,
+                                   0.0f, 0.0f },
     },
+
+    /* The left hand, which is holding nothing and is drawn anyway - the body
+       has two arms and one of them being absent is louder than it being idle.
+       Down and out on its own side, clear of the blade, fingers hanging
+       forward and down the way an unoccupied hand does. A wrist, not a grip:
+       there is nothing here for a fist to close on.
+
+       On the shoulder line like the other one, and pushed further out than
+       mirroring it would: that is what pulls the solved shoulder line forward
+       and takes the sword arm off full stretch. An idle hand is doing nothing,
+       so where it does nothing is free to be useful. In frame at -0.51 across
+       and -0.85 down - the hand is idle, not missing, and a viewmodel showing
+       one arm reads as a character with one arm. */
+    .off_hand = { -0.34f, -0.32f, -0.54f },
+    .off_hand_dir = { 0.05f, -0.86f, -0.51f },
 
     .draw_track = &KATANA_DRAW,
     .sheathe_track = &KATANA_SHEATHE,
@@ -396,14 +449,29 @@ const WeaponSpec WEAPON_SPEC_KATANA = {
     .damage = 55.0f,
     .range = 2.0f,
 
-    .mesh_path = "models/Swords/Katana/katana.glb",
+    .mesh_path = "models/weapons/katana/katana.glb",
     /* Copies of the rifle's, so the sword is on screen and roughly where a
        held thing goes. Tuned in Task 8, once it is actually on the hand
        socket and there is something to tune against. */
     .view_right = 0.148f,
     .view_down = 0.125f,
     .view_forward = 0.38f,
-    .view_fov = 43.0f,
+    /* Wider than the rifle's 43, and this is the number that decides whether a
+       sword can be carried at all.
+
+       A viewmodel FOV is how much of the frame the weapon's own frustum shows,
+       and the world is drawn at VIEW_BASE_FOV, 75. A gun is held near the view
+       axis, so 43 costs it nothing and buys it a receiver that reads large.
+       A sword is held DOWN, and down is where a narrow frustum has no room:
+       this body's own hand in Sword_Idle sits 0.90m below the eye and 0.65m in
+       front of it, which is 54 degrees below the axis - off the bottom of any
+       frustum, 90 degrees included. So the first-person hold is a cheat and
+       always was; what 43 did was make it a big enough cheat to look like one,
+       with the hand pulled up to within 5cm of eye level to stay in shot.
+
+       At 70 the hand sits 0.71 of the way down the frame at 21cm below the
+       eye. Still a cheat - four times less of one, and low in frame, which is
+       where a hand carrying something belongs. */
 
     /* Free, where the rifle's is a third.
 

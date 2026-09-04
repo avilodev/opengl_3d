@@ -125,21 +125,14 @@ static void draw_scabbard(const SkinnedModel* model, const Pose* pose,
     weapon_model_draw_scabbard(melee);
 
     if (sheathed) {
-        float d[3];
-        float length = 0.0f;
-        for (int c = 0; c < 3; ++c) {
-            d[c] = melee->blade_tip[c] - melee->blade_base[c];
-            length += d[c] * d[c];
-        }
-        length = sqrtf(length);
-        if (length > 1e-6f) {
-            glPushMatrix();
-            glTranslatef(-d[0] / length * melee->sheathed_offset,
-                         -d[1] / length * melee->sheathed_offset,
-                         -d[2] / length * melee->sheathed_offset);
-            weapon_model_draw(spec, spec->hidden_parts);
-            glPopMatrix();
-        }
+        /* The same step the first-person hip takes, asked of the one function
+           that states it. */
+        float step[3];
+        weapon_spec_sheathed_step(melee, step);
+        glPushMatrix();
+        glTranslatef(step[0], step[1], step[2]);
+        weapon_model_draw(spec, spec->hidden_parts);
+        glPopMatrix();
     }
     glPopMatrix();
 }
@@ -193,9 +186,32 @@ static int instance_ready(CharacterInstance* instance, const SkinnedModel* model
        empty hands rather than a fallback standing in for one. */
     character_animation_init(&instance->animation, model,
                              instance->weapon ? &instance->weapon->clips : NULL);
+    instance->aim_weapon = instance->weapon;
     skinned_model_bind_pose(model, &instance->pose);
     instance->ready = 1;
     return 1;
+}
+
+/* The aim layer follows what the body is holding NOW.
+
+   It is resolved from the weapon's clip set, and that used to happen once, on
+   the frame a body first drew - which was true for as long as a body picked up
+   one weapon and kept it. It no longer is: a class change swaps the spec under
+   a body that is already standing there, and the mesh in its hand changes
+   because that is read live. The aim clips did not, so a body that came up
+   holding a sword went on aiming with the sword's single pose while carrying a
+   rifle - a gun that cannot pitch, held by a chest that cannot either, with a
+   muzzle nowhere near where the rounds leave.
+
+   Compared by pointer because specs are static and one per weapon, so the same
+   weapon is the same address. */
+static void aim_clips_follow_weapon(CharacterInstance* instance,
+                                    const SkinnedModel* model) {
+    if (instance->aim_weapon == instance->weapon) return;
+    character_animation_set_clips(&instance->animation, model,
+                                  instance->weapon ? &instance->weapon->clips
+                                                   : NULL);
+    instance->aim_weapon = instance->weapon;
 }
 
 void character_instance_init(CharacterInstance* instance, int rig) {
@@ -208,6 +224,29 @@ void character_instance_init(CharacterInstance* instance, int rig) {
     instance->sheathed = 0;
 }
 
+/* Both hands onto a sheathed sword, if that is what this body is wearing. */
+static void worn_sword_reach(const SkinnedModel* model,
+                             CharacterInstance* instance) {
+    if (!instance->sheathed) return;
+    const MeleeSpec* melee = weapon_spec_melee(instance->weapon);
+    if (!melee || !melee->scabbard_path) return;
+
+    Mat4 saya;
+    if (!character_scabbard_transform(model, &instance->pose, melee, &saya))
+        return;
+    /* The sword sits back inside the mouth along its own axis - the step both
+       renderers take, asked of the one function that states it. */
+    float step[3];
+    weapon_spec_sheathed_step(melee, step);
+    Mat4 sword = mat4_multiply(saya,
+                               mat4_translation(step[0], step[1], step[2]));
+
+    float right[3], left[3];
+    mat4_transform_point(&sword, instance->weapon->grip_right, right);
+    mat4_transform_point(&saya, melee->saya_grip, left);
+    character_animation_reach_hands(model, right, left, &instance->pose);
+}
+
 void character_renderer_update(CharacterLibrary* library, CharacterInstance* instance,
                                const CharacterVisualState* state, float delta_time,
                                int visible) {
@@ -216,6 +255,7 @@ void character_renderer_update(CharacterLibrary* library, CharacterInstance* ins
        library and so cannot, which is the whole point of the split. */
     SkinnedModel* model = character_library_load(library, instance->rig);
     if (!model || !instance_ready(instance, model)) return;
+    aim_clips_follow_weapon(instance, model);
 
     float target = state->ledge_hanging ? 1.0f : 0.0f;
     if (delta_time > 0.0f) {
@@ -258,6 +298,21 @@ void character_renderer_update(CharacterLibrary* library, CharacterInstance* ins
        The skinning it still guards is per-vertex, which is the cost that
        actually wanted saving. */
     character_animation_pose(&instance->animation, model, &instance->pose);
+    /* A worn sword is carried with both hands on it: the weapon hand on the
+       tsuka standing out of the scabbard's mouth, the off hand steadying the
+       scabbard below it. Layered onto the finished pose rather than authored
+       as a clip, because the library has no such clip and because the points
+       it reaches for are the spec's own - the same grip_right, saya_grip and
+       sheathed_offset the first-person hands close on. One set of facts, two
+       solvers: the viewmodel solves human-sized arms in camera space and this
+       solves the body's own, and what they agree about is where the hands are
+       ON the sword.
+
+       Last, and after every layer, because the aim and the twist move the
+       shoulders and the scabbard hangs off a pelvis those layers also turn.
+       Composed off the pose as it stands, so the arms reach the sheath that is
+       actually there this frame rather than the one the bind pose had. */
+    worn_sword_reach(model, instance);
     if (!visible) return;
 
     skinned_model_skin(model, &instance->pose, &instance->skin);

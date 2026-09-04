@@ -65,7 +65,7 @@ typedef struct {
    rather than a mark on the screen. */
 extern const SightSpec SIGHT_HOLOGRAPHIC;
 
-/* The magnified prism. Still the renderer's boxes - models/Scopes/Sight_mid
+/* The magnified prism. Still the renderer's boxes - models/attachments/sight_mid
    is waiting for its mesh - which is exactly what a null mesh_path says. */
 extern const SightSpec SIGHT_PRISM_2X;
 

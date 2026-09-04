@@ -333,6 +333,24 @@
    cross a room between two fights without it sheathing in the player's hands,
    short enough that walking away from a fight ends it. Counted from the end of
    the last attack, so a chain does not race it. */
-#define MELEE_AUTO_SHEATHE_SECONDS 3.0f
+#define MELEE_AUTO_SHEATHE_SECONDS 10.0f
+
+/* Where in that wait the hands come down to MELEE_CARRY_REST, as a fraction of
+   it. A fraction and not a second, so the two cannot be retuned apart: the
+   hands dropping AFTER the sword had gone away would be a stance nobody ever
+   sees, and there is no version of this where the order is a matter of taste.
+   Both come off melee_quiet_time, which is what stops them being two clocks. */
+#define MELEE_REST_AFTER 0.65f
+
+/* How fast a carry blend crosses to the stance the player has asked for, as an
+   exponential rate: a stance is about 97% arrived after 0.35s and half arrived
+   after 0.07s.
+
+   Fast enough that stepping onto a wall does not leave the blade hanging in
+   the middle of the frame through the part of the run where seeing matters,
+   slow enough to read as the hands moving rather than as the sword changing
+   place. It is one number for all three stances because a hand is as quick
+   going one way as the other. */
+#define MELEE_CARRY_RESPONSE 10.0f
 
 #endif

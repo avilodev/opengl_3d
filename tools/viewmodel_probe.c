@@ -23,6 +23,7 @@
 #include "gameplay/movement_tuning.h"
 #include "gameplay/viewmodel_pose.h"
 #include "render/arm_placement.h"
+#include "render/weapon_grip.h"
 #include "render/viewmodel_clip_arms.h"
 #include "render/viewmodel_neck.h"
 #include "render/character_transform.h"
@@ -274,7 +275,7 @@ static int check_arms(const WeaponSpec* spec, const SkinnedModel* model,
     ArmPlacement hip = {0,0}, sprint = {0,0}, ads = {0,0};
 
     pose_targets(spec, 0.0f, 0.0f, targets);
-    int f_hip = arm_placement_solve(&rig, targets, spec->view_fov * 0.5f, &hip);
+    int f_hip = arm_placement_solve(&rig, targets, VIEWMODEL_FOV * 0.5f, &hip);
     report(&rig, "hip, own placement", targets, hip, f_hip);
 
     /* The doc's claim: the carry is not reachable from the hip's placement. */
@@ -283,7 +284,7 @@ static int check_arms(const WeaponSpec* spec, const SkinnedModel* model,
     printf("       firing %.2f  support %.2f\n",
            arm_placement_reach_fraction(&rig, 0, targets[0], hip),
            arm_placement_reach_fraction(&rig, 1, targets[1], hip));
-    int f_sprint = arm_placement_solve(&rig, targets, spec->view_fov * 0.5f,
+    int f_sprint = arm_placement_solve(&rig, targets, VIEWMODEL_FOV * 0.5f,
                                        &sprint);
     report(&rig, "sprint, own placement", targets, sprint, f_sprint);
 
@@ -442,7 +443,7 @@ static void check_reload(const WeaponSpec* spec, const ArmRig* rig) {
         /* In order and each drawn toward the last, exactly as the renderer
            solves them - a probe that solved them independently would be
            checking a different set of placements than the game uses. */
-        if (!arm_placement_solve_near(rig, targets, spec->view_fov * 0.5f,
+        if (!arm_placement_solve_near(rig, targets, VIEWMODEL_FOV * 0.5f,
                                       i ? &solved[i - 1] : NULL, &solved[i])) {
             printf("   %2d  %.2f   FAIL nothing reaches this key\n", i, key->at);
             ++failures;
@@ -461,7 +462,7 @@ static void check_reload(const WeaponSpec* spec, const ArmRig* rig) {
         float depth = -targets[1][2];
         float screen = depth > 0.02f
             ? (targets[1][1] / depth) /
-              tanf(spec->view_fov * 0.5f * MATH_DEG_TO_RAD) : 0.0f;
+              tanf(VIEWMODEL_FOV * 0.5f * MATH_DEG_TO_RAD) : 0.0f;
         printf("   %2d  %.2f   %-16s  z %+.2f blade %2.0f   %.2f    %.2f  "
                "%+.2f  %s\n",
                i, key->at,
@@ -1234,7 +1235,7 @@ static void check_reload_shape(const WeaponSpec* spec) {
        frame and coming back holding a magazine is what a reload looks like from
        behind a rifle, and a belt that appeared on screen would be a belt held up
        by the player's chin. */
-    float tangent = tanf(spec->view_fov * 0.5f * MATH_DEG_TO_RAD);
+    float tangent = tanf(VIEWMODEL_FOV * 0.5f * MATH_DEG_TO_RAD);
     ViewmodelPose reload_pose;
     weapon_spec_rest_pose(spec, 0.0f, 1.0f, 0.0f, &reload_pose);
     float well[3];
@@ -1523,18 +1524,19 @@ static int probe_arms_ready(const SkinnedModel* model) {
    point of its own and neither is an authored wrist. The sibling of the
    function below, and a copy of carry_targets in viewmodel_arms.c for the
    reason the tables above are copied. */
-static void probe_carry_targets(const WeaponSpec* spec,
-                                const ViewmodelPose* pose,
-                                float targets[2][3]) {
+/* The mirror of viewmodel_arms' sheathed_targets: two fists on one worn
+   sword, each walked back down its own fingers from the thing it is holding -
+   the weapon hand on the tsuka, the off hand on the scabbard below it. */
+static void probe_sheathed_targets(const WeaponSpec* spec,
+                                   const MeleeSpec* melee,
+                                   const Mat4* sword, const Mat4* saya,
+                                   float targets[2][3]) {
     for (int a = 0; a < 2; ++a) {
-        float grip[3], fingers[3], palm[3];
-        viewmodel_pose_transform_point(pose,
-                                       a ? spec->grip_left : spec->grip_right,
-                                       grip);
-        viewmodel_pose_transform_direction(pose, PROBE_HAND_DIR[spec->hold][a],
-                                           fingers);
-        viewmodel_pose_transform_direction(pose, PROBE_PALM_DIR[spec->hold][a],
-                                           palm);
+        const Mat4* on = a ? saya : sword;
+        float fingers[3], palm[3], grip[3];
+        mat4_transform_direction(on, PROBE_HAND_DIR[spec->hold][a], fingers);
+        mat4_transform_direction(on, PROBE_PALM_DIR[spec->hold][a], palm);
+        mat4_transform_point(on, a ? melee->saya_grip : spec->grip_right, grip);
         probe_wrist_from_grip(&g_probe_arms[a], fingers, palm, grip,
                               targets[a]);
     }
@@ -1743,7 +1745,7 @@ static int wrist_in_gun_frame(const WeaponSpec* spec, const SkinnedModel* model,
                                               : spec->grip_right, grips[a]);
     ArmPlacement p = {0, 0};
     if (!arm_placement_solve(rig, grips,
-                             (ads > 0.5f ? weapon_spec_view_ads_fov(spec) : spec->view_fov)
+                             (ads > 0.5f ? weapon_spec_view_ads_fov(spec) : VIEWMODEL_FOV)
                              * 0.5f, &p))
         return 0;
 
@@ -2239,12 +2241,97 @@ static int neck_gun_point(const WeaponSpec* spec, const float local[3],
     ViewmodelNeck neck;
     viewmodel_neck_build(&neck, spec, pitch, 0.0f, ads);
     viewmodel_neck_transform_point(&neck, at, at);
-    float fov = lerpf(spec->view_fov, weapon_spec_view_ads_fov(spec), ads);
+    float fov = lerpf(VIEWMODEL_FOV, weapon_spec_view_ads_fov(spec), ads);
     return neck_screen(at, fov, 16.0f / 9.0f, screen);
 }
 
 static int neck_in_frame(const float screen[2]) {
     return fabsf(screen[0]) <= 1.0f && fabsf(screen[1]) <= 1.0f;
+}
+
+/* Where the tracer says the barrel is, as a position on the screen.
+
+   The streak is drawn through the WORLD's projection and the gun through its
+   own narrower one, which is what the widening inside weapon_tracer_origin
+   exists to reconcile: the two projections disagree about metres and have to
+   agree about angles. So the check that means anything is on the screen, not in
+   the world - the same normalised position, one point through each projection.
+
+   The world point comes back in world units, so it is walked back onto the
+   camera basis it was built from. Orthonormal, so the inverse is three dot
+   products. */
+static int tracer_screen(const Weapon* weapon, float pitch, float eye,
+                         float aspect, float out[2]) {
+    PlayerController player;
+    memset(&player, 0, sizeof player);
+    float wx, wy, wz;
+    weapon_tracer_origin(weapon, &player, 0.0f, pitch, 0.0f, eye,
+                         VIEW_BASE_FOV, &wx, &wy, &wz);
+
+    float forward[3], right[3], up[3];
+    traversal_view_basis(0.0f, pitch, 0.0f, forward, right, up);
+    const float d[3] = {wx, wy - eye, wz};
+    float at[3];
+    at[0] = d[0]*right[0]   + d[1]*right[1]   + d[2]*right[2];
+    at[1] = d[0]*up[0]      + d[1]*up[1]      + d[2]*up[2];
+    at[2] = -(d[0]*forward[0] + d[1]*forward[1] + d[2]*forward[2]);
+    return neck_screen(at, VIEW_BASE_FOV, aspect, out);
+}
+
+/* The streak has to start at the barrel that is drawn, at every pitch.
+
+   The gun is worn on a neck: looking down turns the whole viewmodel about the
+   skull, and the muzzle goes with it. The tracer's origin is the third consumer
+   of that rotation - see render/viewmodel_neck.h, which names all three and
+   says why they are one module - and it is the one nobody can see is missing
+   from a still frame, because a tracer is gone in a tenth of a second and the
+   error is zero at the one pitch anybody screenshots.
+
+   Level is not the check. Level is where every version of this agrees. */
+static void check_tracer_leaves_the_barrel(const WeaponSpec* spec,
+                                           const SkinnedModel* model) {
+    printf("\n15. the tracer leaves the barrel that is drawn (%s)\n", spec->name);
+    const float aspect = 16.0f / 9.0f;
+
+    float step[3];
+    if (!viewmodel_clip_arms_eye_step(model, step)) {
+        expect(0, "the rig has a head to measure a neck pivot from");
+        return;
+    }
+    const float pivot[3] = {-step[0], -step[1], -step[2]};
+    viewmodel_neck_set_pivot(pivot);
+    viewmodel_neck_set_look_yaw(0.0f);
+
+    Weapon weapon;
+    weapon_init(&weapon, spec);
+    const float muzzle[3] = {0.0f, firearm_of(spec)->muzzle_up,
+                             -firearm_of(spec)->muzzle_forward};
+
+    /* Off the sight, where the neck is at full strength. On it the neck fades
+       to nothing and this cannot fail - which is why the bug survived: aiming
+       is the half of the game anybody checks a muzzle against. */
+    const float look[] = {0.0f, -20.0f, -50.0f, 25.0f, 60.0f};
+    for (int i = 0; i < (int)(sizeof look / sizeof look[0]); ++i) {
+        float drawn[2], fired[2];
+        if (!neck_gun_point(spec, muzzle, look[i], 0.0f, drawn)) {
+            expect(0, "the muzzle is in front of the eye");
+            continue;
+        }
+        if (!tracer_screen(&weapon, look[i], VIEW_EYE_HEIGHT, aspect, fired)) {
+            expect(0, "the tracer starts in front of the eye");
+            continue;
+        }
+        float off = sqrtf((drawn[0] - fired[0]) * (drawn[0] - fired[0]) +
+                          (drawn[1] - fired[1]) * (drawn[1] - fired[1]));
+        char label[80];
+        snprintf(label, sizeof label,
+                 "a look of %+.0f: streak starts off the muzzle by",
+                 (double)look[i]);
+        /* Half a percent of the screen. The muzzle is a point and the streak is
+           a line out of it: any more than this and the line starts beside the
+           barrel rather than at the end of it. */
+        check(label, off, 0.0f, 0.005f);
+    }
 }
 
 static void check_neck(const WeaponSpec* spec, const SkinnedModel* model) {
@@ -2407,7 +2494,10 @@ static void check_neck(const WeaponSpec* spec, const SkinnedModel* model) {
         ViewmodelNeck neck;
         viewmodel_neck_build(&neck, &full, look[i], 0.0f, 1.0f);
         viewmodel_neck_transform_point(&neck, center, center);
-        float screen[2];
+        /* Zeroed because the two checks below run whether or not the
+           projection succeeded - a sight behind the eye fails the expect and
+           then still reads these. */
+        float screen[2] = {0.0f, 0.0f};
         char label[64];
         expect(neck_screen(center, weapon_spec_view_ads_fov(&full),
                            16.0f / 9.0f, screen),
@@ -2542,44 +2632,9 @@ static void check_sword_neck(void) {
            "a look at the sky drops the guard out of the bottom of the frame");
 }
 
-/* ---- 15. the sword's carries ----
-
-   A katana is a weapon with both halves now: swings are clips, and holds are
-   solved carries reached through the same IK a rifle's grips are. What that
-   buys has to be checked here rather than looked at, for the reason section 4
-   exists - the placement search FALLS BACK when it cannot reach a pose rather
-   than refusing to draw, so a stance nobody's arms can hold looks exactly like
-   a stance somebody chose.
-
-   And the thing this whole section is for: the guard is visible and the low
-   rest is not, and the rest is invisible BECAUSE the hands are at the hip.
-   That is the distinction between a stance and a bug, and it is a number. */
-
-static const char* CARRY_NAME[MELEE_CARRY_COUNT] = {
-    "low rest", "guard", "momentum",
-};
-
-/* A camera-space point of the sword at a stance, on screen as a fraction of
-   half the frame. Zero if it is behind the eye. */
-static int carry_screen(const WeaponSpec* spec, const ViewmodelPose* pose,
-                        const float local[3], float out[2]) {
-    float at[3];
-    viewmodel_pose_transform_point(pose, local, at);
-    float depth = -at[2];
-    if (depth <= 0.02f) return 0;
-    float tangent = tanf(spec->view_fov * 0.5f * MATH_DEG_TO_RAD);
-    out[0] = (at[0] / depth) / (tangent * 16.0f / 9.0f);
-    out[1] = (at[1] / depth) / tangent;
-    return 1;
-}
-
-static int carry_in_frame(const float s[2]) {
-    return fabsf(s[0]) <= 1.0f && fabsf(s[1]) <= 1.0f;
-}
-
 static void check_carries(const WeaponSpec* spec, const SkinnedModel* model,
                           const ArmRig* rig) {
-    printf("\n15. the sword is held rather than sampled (%s)\n", spec->name);
+    printf("\n15. the sword held, and the sword worn (%s)\n", spec->name);
     const MeleeSpec* melee = weapon_spec_melee(spec);
     if (!melee) { ++failures; printf("   FAIL not a melee weapon\n"); return; }
     if (!probe_arms_ready(model)) {
@@ -2597,85 +2652,110 @@ static void check_carries(const WeaponSpec* spec, const SkinnedModel* model,
            "a sword is held on a hilt and not on a pistol grip");
     expect(spec->grip_right[2] > -tsuka && spec->grip_right[2] < 0.0f,
            "the forward hand is on the tsuka, under the guard");
-    expect(spec->grip_left[2] > 0.0f && spec->grip_left[2] < tsuka,
-           "and the rear hand behind it, still on the tsuka");
-    float apart = spec->grip_left[2] - spec->grip_right[2];
-    printf("   the fists sit %.0fcm apart on a %.0fcm grip\n",
-           apart * 100.0f, tsuka * 200.0f);
-    expect(apart > 0.07f && apart < tsuka * 2.0f,
-           "a fist's width apart, and both still on the grip");
-    expect(spec->grip_right[1] == 0.0f && spec->grip_left[1] == 0.0f,
+    expect(spec->grip_right[1] == 0.0f,
            "and on the hilt's own axis - a sword has nothing hanging under it");
 
-    /* Every stance reachable at a comfortable bend, which is what the solve
-       is for and what its fallback would hide. */
-    ArmPlacement placement[MELEE_CARRY_COUNT];
-    for (int c = 0; c < MELEE_CARRY_COUNT; ++c) {
-        float targets[2][3];
-        probe_carry_targets(spec, &melee->carries[c], targets);
-        int found = arm_placement_solve(rig, targets, spec->view_fov * 0.5f,
-                                        &placement[c]);
-        float firing = arm_placement_reach_fraction(rig, 0, targets[0],
-                                                    placement[c]);
-        float support = arm_placement_reach_fraction(rig, 1, targets[1],
-                                                     placement[c]);
-        int ok = found && firing >= 0.66f && firing <= 0.80f &&
-                 support >= 0.66f && support <= 0.80f;
-        if (!ok) ++failures;
-        printf("  %s %-12s z %+.2f blade %2.0f deg   forward %.2f  rear %.2f\n",
-               ok ? "ok  " : "FAIL", CARRY_NAME[c], placement[c].z,
-               placement[c].blade, firing, support);
+    /* The carries and the off hand are still on the spec and are deliberately
+       not checked: nothing reads them since the hold became the clip. They are
+       left in place rather than deleted, so what is asserted here is what is
+       actually drawn - see MeleeCarry in weapon_spec.h. */
+
+    /* ---- the sword HELD ----
+
+       First person asks for the same clip third person plays, at the same
+       frame, and that is the whole of the hold: there is no second authoring
+       of it in camera space to drift from the body. The carries are still on
+       the spec and nothing reads them - see MeleeCarry. */
+    Weapon held_weapon;
+    weapon_init(&held_weapon, spec);
+    held_weapon.sheathed = 0;
+    float clip_time = -1.0f;
+    const char* held_clip = weapon_melee_clip(&held_weapon, &clip_time);
+    printf("   drawn, first person asks for '%s' at %.2fs; the body holds "
+           "'%s'\n", held_clip ? held_clip : "(none)", clip_time,
+           spec->clips.aim[1] ? spec->clips.aim[1] : "(none)");
+    expect(held_clip && spec->clips.aim[1] &&
+           strcmp(held_clip, spec->clips.aim[1]) == 0,
+           "the held sword is the clip the third-person body is playing, not "
+           "a pose of its own");
+    expect(clip_time == 0.0f, "at the frame that body is drawing");
+
+    /* ---- the sword WORN ----
+
+       Both hands on it: the off hand steadying the scabbard on the hip, the
+       weapon hand come across the body onto the handle standing out of it.
+       Off one composition, the same one the renderer multiplies onto its
+       stack. */
+    Mat4 saya, sword;
+    weapon_grip_worn_transforms(melee, &saya, &sword);
+
+    float mouth[3], hilt[3], scabbard[3];
+    const float centre[3] = {0.0f, 0.0f, 0.0f};
+    mat4_transform_point(&saya, centre, mouth);
+    mat4_transform_point(&sword, spec->grip_right, hilt);
+    mat4_transform_point(&saya, melee->saya_grip, scabbard);
+    printf("   worn: koiguchi (%+.2f %+.2f %+.2f)  hilt (%+.2f %+.2f %+.2f)  "
+           "scabbard hold (%+.2f %+.2f %+.2f)\n",
+           mouth[0], mouth[1], mouth[2], hilt[0], hilt[1], hilt[2],
+           scabbard[0], scabbard[1], scabbard[2]);
+
+    expect(mouth[0] < 0.0f, "the scabbard is worn on the player's left");
+    expect(mouth[1] < -0.5f,
+           "down at a hip rather than up where a frame could see it");
+    expect(hilt[0] < 0.0f,
+           "so the hilt is on the left too - which is what makes the weapon "
+           "hand cross the body to reach it");
+    expect(scabbard[0] < 0.0f, "and the off hand is on its own side");
+    expect(hilt[1] > scabbard[1],
+           "the hilt stands above the hold on the scabbard, so the hands are "
+           "not fighting for one point");
+    float apart_worn = 0.0f;
+    for (int c = 0; c < 3; ++c) {
+        float d = hilt[c] - scabbard[c];
+        apart_worn += d * d;
     }
+    apart_worn = sqrtf(apart_worn);
+    printf("   the two fists sit %.0fcm apart on the worn sword\n",
+           apart_worn * 100.0f);
+    expect(apart_worn > 0.12f && apart_worn < 0.40f,
+           "a hand's span apart - both on the weapon, neither on the other");
 
-    /* And what each stance actually puts on the screen. The tip is the point
-       that matters: the origin is the middle of a grip the hands are around,
-       and what says whether there is a sword in frame is where the blade
-       went. */
-    const float* tip = melee->blade_tip;
-    float hands[MELEE_CARRY_COUNT][2], point[MELEE_CARRY_COUNT][2];
-    int on_hands[MELEE_CARRY_COUNT], on_point[MELEE_CARRY_COUNT];
-    for (int c = 0; c < MELEE_CARRY_COUNT; ++c) {
-        const float origin[3] = {0.0f, 0.0f, 0.0f};
-        on_hands[c] = carry_screen(spec, &melee->carries[c], origin, hands[c]) &&
-                      carry_in_frame(hands[c]);
-        on_point[c] = carry_screen(spec, &melee->carries[c], tip, point[c]) &&
-                      carry_in_frame(point[c]);
-        printf("   %-12s hands (%+.2f %+.2f)%s  tip (%+.2f %+.2f)%s\n",
-               CARRY_NAME[c], hands[c][0], hands[c][1],
-               on_hands[c] ? " in " : " out",
-               point[c][0], point[c][1], on_point[c] ? " in " : " out");
+    /* And that a pair of shoulders can actually reach that arrangement. The
+       weapon hand is across the body, which is the reach this pose lives or
+       dies on. */
+    float worn_targets[2][3];
+    probe_sheathed_targets(spec, melee, &sword, &saya, worn_targets);
+    ArmPlacement worn_place;
+    int worn_found = arm_placement_solve(rig, worn_targets,
+                                         VIEWMODEL_FOV * 0.5f, &worn_place);
+    float across = arm_placement_reach_fraction(rig, 0, worn_targets[0],
+                                                worn_place);
+    float steady = arm_placement_reach_fraction(rig, 1, worn_targets[1],
+                                                worn_place);
+    printf("   worn placement z %+.2f blade %2.0f deg   across %.2f  steady %.2f\n",
+           worn_place.z, worn_place.blade, across, steady);
+    {
+        float sh0[3], sh1[3];
+        arm_placement_shoulder(rig, 0, worn_place, sh0);
+        arm_placement_shoulder(rig, 1, worn_place, sh1);
+        printf("   shoulders: weapon (%+.2f %+.2f %+.2f)  off (%+.2f %+.2f %+.2f)\n",
+               sh0[0], sh0[1], sh0[2], sh1[0], sh1[1], sh1[2]);
+        /* And the check that whole pose exists to pass. An arm reaching across
+           the body runs between its shoulder and its hand, so if both of those
+           are in front of the eye the limb sweeps the frame at a few
+           centimetres from the lens - which is not a viewmodel, it is a
+           forearm in the player's face. It was exactly that: the shoulder
+           0.10m in front of the eye and the hilt 0.11m in front, because a
+           scabbard authored against the body was being hung off an eye that
+           sits ahead of it. See VIEWMODEL_HIP_BEHIND_EYE. */
+        expect(sh0[2] > 0.0f && sh1[2] > 0.0f,
+               "both shoulders are behind the eye, where shoulders are");
+        expect(worn_targets[0][2] > 0.0f && worn_targets[1][2] > 0.0f,
+               "and both hands too, so no part of the arm crosses the camera");
     }
-
-    expect(on_point[MELEE_CARRY_GUARD],
-           "the guard puts the blade on screen - this is the one you see");
-    expect(point[MELEE_CARRY_GUARD][1] > 0.0f,
-           "and rising through the frame rather than lying across the bottom");
-    expect(on_hands[MELEE_CARRY_GUARD],
-           "with the hands under it, in frame");
-
-    expect(!on_point[MELEE_CARRY_REST] && !on_hands[MELEE_CARRY_REST],
-           "the low rest shows nothing at all");
-    /* The half of that which makes it a stance. A pose that is off screen
-       because it is behind the eye, or a metre to the left, is a bug that
-       happens to be invisible; this one is off screen because the hands are
-       down at the belt, which is where a sword at rest is. */
-    printf("   at rest the hands sit %.0fcm below the eye, against a belt at "
-           "%.0fcm\n", -melee->carries[MELEE_CARRY_REST].y * 100.0f,
-           VIEWMODEL_HIP_BELOW_EYE * 100.0f);
-    expect(melee->carries[MELEE_CARRY_REST].y < -0.40f &&
-           melee->carries[MELEE_CARRY_REST].y > -VIEWMODEL_HIP_BELOW_EYE,
-           "and it is invisible because the hands are at the hip");
-    expect(melee->carries[MELEE_CARRY_REST].z < 0.0f,
-           "in front of the eye rather than behind it, which is the other way "
-           "to be invisible");
-
-    expect(on_point[MELEE_CARRY_MOMENTUM],
-           "momentum keeps the blade on screen");
-    expect(fabsf(point[MELEE_CARRY_MOMENTUM][0]) > 0.35f,
-           "and off to one side, out of the way of a wall run's view");
-    expect(fabsf(point[MELEE_CARRY_MOMENTUM][1]) <
-           fabsf(point[MELEE_CARRY_GUARD][1]),
-           "canted across rather than raised through the middle");
+    expect(worn_found, "a pair of shoulders reaches the worn sword");
+    expect(across <= ARMS_COMFORT_MAX && steady <= ARMS_COMFORT_MAX,
+           "with neither arm straightened out to get there");
 }
 
 /* ---- 16. which stance, and when ----
@@ -2790,26 +2870,27 @@ static void check_carry_blend(const WeaponSpec* spec) {
            caught * 100.0f);
     expect(caught > 0.05f && caught < 0.95f, "genuinely mid-transition");
 
-    const MeleeSpec* melee = weapon_spec_melee(spec);
-    float span = 0.0f;
-    {
-        const ViewmodelPose* a = &melee->carries[MELEE_CARRY_GUARD];
-        const ViewmodelPose* b = &melee->carries[MELEE_CARRY_MOMENTUM];
-        float d[3] = {b->x - a->x, b->y - a->y, b->z - a->z};
-        span = sqrtf(d[0]*d[0] + d[1]*d[1] + d[2]*d[2]);
-    }
-    float would_snap = (1.0f - caught) * span;
+    /* What a from/to pair would do here is the whole argument: it has one
+       `from`, and to answer a new target it has to set that `from` to where
+       the sword is nominally coming from - the full momentum carry - which
+       drives the blend the rest of the way INTO a stance it was already
+       leaving before it can turn round.
 
-    ViewmodelPose before = held;
+       Checked on the WEIGHTS rather than on where the sword ended up, and
+       that is not a weakening. The three stances are one pose today, so every
+       position-based measure of this is identically zero and would pass
+       against a blend that had been ripped out entirely. The weights are the
+       thing that actually has no `from` to lie about, and they say so whether
+       or not the poses they mix happen to differ. */
     player.wall_run.active = 0;
     weapon_update(&weapon, &command, &player, 0, 0, 0, 1.6f, 75.0f, step);
     weapon_melee_carry(&weapon, &held, weights);
-    float d[3] = {held.x - before.x, held.y - before.y, held.z - before.z};
-    float moved = sqrtf(d[0]*d[0] + d[1]*d[1] + d[2]*d[2]);
-    printf("   the sword moves %.1fmm on the frame the wall run ends; a "
-           "from/to pair would have jumped %.1fmm\n",
-           moved * 1000.0f, would_snap * 1000.0f);
-    expect(moved < would_snap * 0.5f,
+    float eased = weights[MELEE_CARRY_MOMENTUM];
+    printf("   one step after the wall run ends the momentum weight is %.3f, "
+           "from %.3f\n", eased, caught);
+    expect(eased < caught,
+           "the stance it was crossing to starts giving way immediately");
+    expect(eased > caught * 0.75f,
            "an interrupted stance eases on rather than snapping back to a "
            "`from` it never had");
 }
@@ -2825,7 +2906,7 @@ int main(void) {
 
     static SkinnedModel model;
     char error[256];
-    if (!skinned_model_load_glb(&model, "models/animations/UAL1_Standard.glb",
+    if (!skinned_model_load_glb(&model, "models/characters/UAL1_Standard.glb",
                                 error, sizeof error)) {
         printf("\n4. arm placements: SKIPPED, rig would not load: %s\n", error);
         ++failures;
@@ -2833,12 +2914,13 @@ int main(void) {
         /* The sword clips ship in the second library, so a probe that loaded
            only the first would report every one of them missing. */
         if (!skinned_model_add_clips(&model,
-                                     "models/animations/UAL2_Standard.glb",
+                                     "models/characters/UAL2_Standard.glb",
                                      error, sizeof error))
             printf("note: extra clips not loaded (%s)\n", error);
         /* Before the arm checks, because it sets the neck's pivot off this
            same rig and nothing else in this file will. */
         check_neck(spec, &model);
+        check_tracer_leaves_the_barrel(spec, &model);
         check_clip_arms(&WEAPON_SPEC_KATANA, &model);
         check_melee_rides_hand(&model);
         check_blade_faces(&model);

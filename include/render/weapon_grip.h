@@ -47,4 +47,17 @@ const float* weapon_grip_palm_dir(int hold, int hand);
    through a rotation that happened to suit exactly one of them. */
 int weapon_grip_hand_rotation(int hold, int hand, Mat4* out);
 
+/* Where a WORN melee weapon and its scabbard sit, in the body's frame.
+
+   The scabbard hangs at a fixed point on the body - the same pelvis offsets
+   the third-person hip uses, measured from the eye instead - and the sword
+   sits back inside it along its own blade axis. Neither depends on the frame,
+   the camera or anything animated, so this is arithmetic and not a draw: the
+   renderer multiplies these onto the stack and the probe checks them, off one
+   composition rather than two that have to agree.
+
+   Either output may be NULL. Both are identity for a weapon with no scabbard. */
+void weapon_grip_worn_transforms(const MeleeSpec* melee, Mat4* saya,
+                                 Mat4* sword);
+
 #endif

@@ -35,8 +35,8 @@
    The _RM files beside them bake root motion into every clip. These are the
    other two, because movement is the controller's to decide: a clip that walked
    the body forward by itself would fight it. */
-#define CHARACTER_RIG_PLAYER_MODEL "models/animations/UAL1_Standard.glb"
-#define CHARACTER_RIG_PLAYER_CLIPS "models/animations/UAL2_Standard.glb"
+#define CHARACTER_RIG_PLAYER_MODEL "models/characters/UAL1_Standard.glb"
+#define CHARACTER_RIG_PLAYER_CLIPS "models/characters/UAL2_Standard.glb"
 
 typedef struct {
     SkinnedModel model;

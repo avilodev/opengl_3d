@@ -1,6 +1,8 @@
 /* See include/render/weapon_grip.h for why one module rather than a table in
    each of the two views that need it. */
 #include "render/weapon_grip.h"
+#include "render/arm_placement.h"
+#include "gameplay/movement_tuning.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -21,12 +23,16 @@ static const float HAND_DIR[WEAPON_HOLD_KIND_COUNT][2][3] = {
     /* HANDS_TOGETHER: both forward, the support hand rolled slightly under the
        firing one rather than across a tube it does not have. */
     { { 0.00f, -0.15f, -0.99f }, { 0.18f, -0.28f, -0.94f } },
-    /* HILT: both hands the same, because on a tsuka they are doing the same
-       thing - two fists in a row wrapped around one shaft, thumbs toward the
-       guard. Run along the hilt for the reason the rifle's support hand is: a
-       0.03m grip is far thinner than this rig's 0.13m fist, so whatever the
-       fist does not wrap has to overshoot somewhere, and along the hilt is
-       where the other hand already is. */
+    /* HILT: the katana is carried one-handed, so only the firing entry is
+       read - the sword hand runs along the hilt for the reason the rifle's
+       support hand does, a 0.03m grip being far thinner than this rig's 0.13m
+       fist, so whatever the fist does not wrap has to overshoot somewhere.
+
+       The second entry is a two-handed hold's answer and nothing reads it: the
+       off hand is parked by MeleeSpec.off_hand and closes on nothing. Kept
+       rather than zeroed because a zero direction is not "free", it is a
+       degenerate one, and this is the answer a two-fisted tsuka would want the
+       day one exists. */
     { { 0.08f, -0.12f, -0.99f }, { 0.08f, -0.12f, -0.99f } },
 };
 
@@ -56,12 +62,11 @@ static const float PALM_DIR[WEAPON_HOLD_KIND_COUNT][2][3] = {
     { { -1.00f, -0.20f, 0.00f }, { 0.00f, 0.00f, 0.00f } },
     /* HANDS_TOGETHER */
     { { -1.00f, -0.20f, 0.00f }, { 0.00f, 0.00f, 0.00f } },
-    /* HILT: both constrained, and to the SAME direction - two hands wrapping
-       one shaft wrap it from the same side, so their palms face the same way
-       across it. The support hand is left free on a gun only because the reload
-       track authors a roll for it key by key against that freedom; a sword has
-       no reload, so nothing here is owed that debt and the wrist that would
-       otherwise roll to wherever its elbow left it is pinned. */
+    /* HILT: the sword hand is pinned, and it can be - a sword has no reload
+       track authoring a roll for it key by key, which is the only reason a
+       gun's support wrist is left free. The second entry goes unread for the
+       one-handed carry; the off hand's roll is freed at the call site, where
+       the fact that it is holding nothing is known. */
     { { -1.00f, -0.15f, 0.00f }, { -1.00f, -0.15f, 0.00f } },
 };
 
@@ -125,4 +130,39 @@ int weapon_grip_hand_rotation(int hold, int hand, Mat4* out) {
     }
     *out = m;
     return 1;
+}
+
+void weapon_grip_worn_transforms(const MeleeSpec* melee, Mat4* saya,
+                                 Mat4* sword) {
+    Mat4 mouth = mat4_identity();
+    if (melee) {
+        /* Through the same half turn the arms take. The spec's offsets and
+           angles are stated in the RIG's frame, where the body faces +Z; the
+           camera looks down -Z. Without this the sword would hang correctly on
+           a third-person hip and point out through the player's front in first
+           person, off one set of numbers that looked right in both places
+           separately. */
+        float hip[3];
+        arm_placement_rig_to_camera(melee->scabbard_offset, 0.0f, hip);
+        /* Left to right, which is the order a GL stack names them in - see
+           utils/mat4.h. Change this and change the renderer with it, or rather
+           do not: the renderer multiplies what comes out of here. */
+        mouth = mat4_multiply(
+            mat4_translation(hip[0], hip[1] - VIEWMODEL_HIP_BELOW_EYE,
+                             hip[2] + VIEWMODEL_HIP_BEHIND_EYE),
+            mat4_rotation_degrees(ARMS_FACING_DEGREES, 0, 1, 0));
+        mouth = mat4_multiply(mouth,
+            mat4_rotation_degrees(melee->scabbard_yaw, 0, 1, 0));
+        mouth = mat4_multiply(mouth,
+            mat4_rotation_degrees(melee->scabbard_pitch, 1, 0, 0));
+        mouth = mat4_multiply(mouth,
+            mat4_rotation_degrees(melee->scabbard_roll, 0, 0, 1));
+    }
+    if (saya) *saya = mouth;
+    if (sword) {
+        float step[3] = {0.0f, 0.0f, 0.0f};
+        if (melee) weapon_spec_sheathed_step(melee, step);
+        *sword = mat4_multiply(mouth,
+                               mat4_translation(step[0], step[1], step[2]));
+    }
 }

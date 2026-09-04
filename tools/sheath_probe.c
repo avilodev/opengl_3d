@@ -284,7 +284,7 @@ static void check_worn(const SkinnedModel* model, const WeaponSpec* spec) {
 int main(void) {
     SkinnedModel model;
     char error[256];
-    if (!skinned_model_load_glb(&model, "models/animations/UAL1_Standard.glb",
+    if (!skinned_model_load_glb(&model, "models/characters/UAL1_Standard.glb",
                                 error, sizeof error)) {
         printf("could not load the rig: %s\n", error);
         return 1;

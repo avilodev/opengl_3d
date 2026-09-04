@@ -98,6 +98,43 @@ void viewmodel_arms_support_target(const WeaponSpec* spec,
 int viewmodel_arms_draw_pose(const CharacterLibrary* library, int rig,
                              const Pose* pose, const float offset[3]);
 
+/* Draws the arms for a melee weapon held in a mixture of stances.
+
+   The sibling of viewmodel_arms_draw above, and deliberately not a flag on it:
+   a sword has no sprint carry, no aim and no reload track, so a ViewmodelBlend
+   describing one is a struct of zeroes with nothing to say. What it takes
+   instead is the mixture itself - the same MELEE_CARRY_COUNT weights the
+   weapon's own pose was blended from, so the shoulders and the hilt they are
+   reaching for cannot be a stance out of step.
+
+   `gun_matrix` is the weapon's BODY-frame transform, the same one the sword
+   was drawn through, so the fists close on the tsuka the player is looking at.
+
+   Returns 0 when the rig is not ready, exactly as the solve path would. */
+int viewmodel_arms_draw_carry(const CharacterLibrary* library, int rig,
+                              const WeaponSpec* spec,
+                              const float gun_matrix[16],
+                              const float weights[MELEE_CARRY_COUNT]);
+
+/* Draws both arms onto a weapon that is WORN rather than held: the off hand on
+   the scabbard and the weapon hand come across the body onto the handle
+   standing out of it.
+
+   Two matrices, both in the body's frame, because the hands are on two
+   different objects - the sword sits back inside the scabbard by
+   sheathed_offset, so one transform cannot serve both fists.
+
+   Where the hands END UP is wherever the scabbard is, which is on a hip and
+   mostly out of frame. That is the intent and not an oversight: the pose is
+   anchored to the body rather than to the screen, so it agrees with what the
+   third-person body is doing whether or not the player can see it.
+
+   Returns 0 when the rig is not ready, exactly as the solve path would. */
+int viewmodel_arms_draw_sheathed(const CharacterLibrary* library, int rig,
+                                 const WeaponSpec* spec,
+                                 const float sword_matrix[16],
+                                 const float saya_matrix[16]);
+
 /* Releases the instance and the cut. Needs no GL context - a subset is index
    arrays and an instance is vertices - but call it at shutdown alongside the
    rest. */

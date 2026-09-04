@@ -217,6 +217,19 @@ typedef struct {
     float melee_duration;
     int sheathed;
 
+    /* How much of each stance the sword is currently held in. Sums to one and
+       none of them is ever negative, so these always describe a hold - there
+       is no frame on which the sword is between two stances and at neither.
+
+       Three weights rather than a from/to pair and a fraction, and that is the
+       whole reason they are here. A pair has one `from`, so answering a new
+       target means setting it to where the sword is nominally coming from -
+       the full stance it was already leaving - which teleports the sword the
+       rest of the way INTO a stance it never reached. Weights have no `from`
+       to lie about: whatever mixture the sword was caught in is the mixture it
+       eases out of. */
+    float melee_carry[MELEE_CARRY_COUNT];
+
     /* What the running swing has already cut, and where the blade was last
        frame. The previous transform is kept because a sweep needs both ends of
        the interval and only one of them is this frame's - and it lives here
@@ -283,6 +296,20 @@ void weapon_set_world_muzzle(Weapon* weapon, const float muzzle[3], int valid);
    weapon back on the spec's rest pose, which is where it sits for the frame or
    two before the arms are ready. */
 void weapon_set_melee_base(Weapon* weapon, const ViewmodelPose* base, int valid);
+
+/* Which stance mixture a melee weapon is being carried in, and where that puts
+   it. Returns zero when the weapon is not being carried at all - a firearm, a
+   sheathed sword, or one whose hands are busy with a swing, a draw or a
+   sheathe - and in that case writes neither output.
+
+   `held` receives the blended pose and may be NULL; `weights` receives the
+   per-stance mixture and may be NULL. The renderer wants only the weights, the
+   viewmodel pose wants only the pose, and the probe wants both.
+
+   It is a query and not a step: the blend is advanced by weapon_update, so
+   asking twice in a frame gives the same answer twice. */
+int weapon_melee_carry(const Weapon* weapon, ViewmodelPose* held,
+                       float weights[MELEE_CARRY_COUNT]);
 
 /* Which clip a melee weapon is playing and how far into it, for whoever has
    the rig to sample. NULL on a weapon that is not melee.

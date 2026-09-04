@@ -289,7 +289,7 @@ static int scope_disc(const ThirdPersonCamera* camera, const Weapon* weapon,
                          weapon->ads);
     viewmodel_neck_transform_point(&neck, center, center);
     float sx = center[0], sy = center[1], sz = center[2];
-    float view_fov = lerpf(weapon->spec->view_fov, weapon_spec_view_ads_fov(weapon->spec),
+    float view_fov = lerpf(VIEWMODEL_FOV, weapon_spec_view_ads_fov(weapon->spec),
                            weapon->ads);
     project_viewmodel_point(sx, sy, sz, view_fov, center_x, center_y);
     *radius = weapon_sight_window_fraction(weapon) *

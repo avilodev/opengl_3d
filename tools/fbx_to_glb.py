@@ -50,9 +50,9 @@ import fbx
 import fbx_mesh
 import glb_write
 
-SOURCE = 'models/Guns/M4/M4+carbine.fbx'
-TEXTURE_DIR = 'models/Guns/M4/M4_Textures'
-OUTPUT = 'models/Guns/M4/m4_carbine.glb'
+SOURCE = 'models/weapons/m4_carbine/source.fbx'
+TEXTURE_DIR = 'models/weapons/m4_carbine/textures'
+OUTPUT = 'models/weapons/m4_carbine/m4_carbine.glb'
 
 # Muzzle to buttplate, in metres. An M4A1 is 838mm with the stock out, and
 # every other dimension of the model is in proportion to that, so one measured

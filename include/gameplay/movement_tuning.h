@@ -125,7 +125,40 @@
    no body to hang a scabbard off, so the belt is measured from the camera
    instead - which is the same measurement, taken from the other end. Roughly
    the eye-to-hip of the rig at gameplay height. */
+/* How far below the eye a hip is - what the first-person scabbard hangs off,
+   there being no body in first person to hang it on.
+
+   This does NOT move with VIEW_EYE_HEIGHT, and the reason is the one thing to
+   understand about this side of the camera: the viewmodel is human-sized and
+   the body is not. ARMS_REACH is 0.60m against the 0.757m arm the rig actually
+   has, because what the player is holding is a real-sized weapon a foot from
+   their face. So the hip the ARMS reach for is a human hip, 0.75m under a
+   human eye - not the giant's pelvis, which the bind pose puts 1.09m under
+   its own.
+
+   Tried at 1.09 when the eye was corrected, and it fails the way arithmetic
+   fails rather than the way taste does: a shoulder 0.32m below the eye and an
+   arm 0.60m long cannot reach 1.09m down, so both fists come out past full
+   stretch and the authored draw track misses the scabbard by the 0.34m the hip
+   moved. First person never draws the body, so the two scales never have to
+   agree in world units - only each within itself. */
 #define VIEWMODEL_HIP_BELOW_EYE 0.75f
+
+/* And how far BEHIND it. The companion to the drop above and, unlike it, a
+   correction rather than a measurement.
+
+   A scabbard offset is authored against the body - it is where the belt is on
+   the pelvis, and third person hangs it off that bone. First person has no
+   body to hang it on, so it hangs it off the eye, and the eye is not on the
+   body's centreline: it is out in front of the head by about a hand's breadth.
+   Applied with only a vertical drop the whole arrangement lands that far
+   FORWARD of where it belongs, which puts the hip - and the arm reaching for
+   it - in front of the camera instead of under it.
+
+   The symptom is unmistakable and was: a shoulder 0.10m in front of the eye
+   and a hand 0.11m in front, so the arm crossing between them swept the frame
+   at five centimetres from the lens. */
+#define VIEWMODEL_HIP_BEHIND_EYE 0.25f
 
 /* --- the leaning body ---
    A lean is a bend, not a tilt: the spine takes it, the feet stay planted, and
@@ -154,6 +187,24 @@
    drawn at its authored size, so swapping the model cannot quietly move the
    player's eyes. */
 #define CHARACTER_RIG_HEIGHT 2.53f
+
+/* Where the eye sits above the feet in first person, and the whole of what
+   "first person" means geometrically.
+
+   Measured off the rig rather than chosen. In its BIND pose - which is the one
+   to measure, a sword stance has bent knees and drops every landmark by a
+   tenth of the body - UAL1 puts the pelvis at 50.1% of its height, the neck at
+   81.3%, the head bone at 85.8% and the crown at 100%. Those are human
+   proportions, so a human's eye height works: about 93% of stature, which on
+   this 2.53m body is 2.36m, or 0.17m below the crown.
+
+   It was 2.12m, which is 83.8% - five centimetres BELOW the head bone and six
+   above the neck. That is not a head, it is a throat: the camera sat inside
+   the body's own neck and jaw with the skull around and above it.
+
+   The crouched figure is the same fraction of a crouched body. */
+#define VIEW_EYE_HEIGHT 2.36f
+#define VIEW_EYE_HEIGHT_CROUCHED 1.31f
 
 /* --- the shape of a jump ---
    A jump pays out immediately and then costs, so the fast way through the
@@ -421,6 +472,29 @@
 /* The resting field of view. Speed widens it and the scope narrows it, both
    measured from here. */
 #define VIEW_BASE_FOV 75.0f
+
+/* And the field of view the VIEWMODEL is drawn at - the hands, the weapon in
+   them and the arms solved onto it.
+
+   The player's, not the weapon's, which is the whole point of it being here.
+   It used to be a number on every WeaponSpec, and that made a field of view a
+   property of what you happened to be carrying: drawing a sword changed the
+   perspective of the world in your hands, and swapping back changed it again.
+   A field of view belongs to whoever is looking through it.
+
+   Narrower than VIEW_BASE_FOV on purpose, the way most first-person games
+   draw a viewmodel: it keeps what the player is holding readable without
+   distorting it at the edges. Tried at VIEW_BASE_FOV and put back - a 75
+   degree viewmodel tightens the refusal in arm_placement that keeps a deltoid
+   off screen, which pins the shoulder line so far back that the rifle's own
+   reload cannot reach its magazine pouch. The support arm falls to 0.49 of
+   its reach mid-track, from 0.72.
+
+   What a weapon may still narrow is the ADS zoom - that is an optic doing what
+   an optic is for, rather than a preference. A user setting for field of view,
+   when there is one, replaces this from one place, which is the point of it
+   being one number rather than one per weapon. */
+#define VIEWMODEL_FOV 43.0f
 
 /* How far up and down the player may look. Effectively all the way: this game
    is played on walls and roofs, so the two directions a player most needs are

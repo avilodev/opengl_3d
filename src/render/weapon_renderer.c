@@ -1,4 +1,5 @@
 #include "render/weapon_renderer.h"
+#include "render/weapon_grip.h"
 #include "render/primitives.h"
 #include "render/weapon_model.h"
 #include "render/viewmodel_arms.h"
@@ -787,7 +788,7 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
-    double fov = lerpf(weapon->spec->view_fov, weapon_spec_view_ads_fov(weapon->spec),
+    double fov = lerpf(VIEWMODEL_FOV, weapon_spec_view_ads_fov(weapon->spec),
                        weapon->ads);
     double top = 0.02 * tan(fov * MATH_PI / 360.0);
     glFrustum(-top * aspect_ratio, top * aspect_ratio, -top, top, 0.02, 8.0);
@@ -893,6 +894,19 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
     GLfloat gun_matrix[16];
     glGetFloatv(GL_MODELVIEW_MATRIX, gun_matrix);
 
+    /* And where the sword is when it is NOT in the hand: the scabbard on the
+       hip, and the sword walked back into it.
+
+       Composed in the body's frame beside the gun's, and for the same reason -
+       the hand that rests on a worn hilt is solved against this matrix and then
+       drawn under the same neck it is, so a neck folded in here would reach the
+       fist twice. Two captures off one composition, so the mouth of the
+       scabbard and the sword in it cannot drift apart. */
+    const MeleeSpec* worn = weapon_spec_melee(weapon->spec);
+    Mat4 saya_matrix, sheathed_matrix;
+    int worn_valid = worn && worn->scabbard_path;
+    weapon_grip_worn_transforms(worn, &saya_matrix, &sheathed_matrix);
+
     /* Now the body, and the gun back on top of it. Everything from here to the
        matching pop is drawn through the neck. */
     glLoadIdentity();
@@ -915,24 +929,19 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
        thing that checks it.
 
        Before the weapon so the blade is over it rather than through it. */
-    {
-        const MeleeSpec* melee = weapon_spec_melee(weapon->spec);
-        if (melee && melee->scabbard_path) {
+    if (worn_valid) {
+        glPushMatrix();
+        glMultMatrixf(saya_matrix.m);
+        weapon_model_draw_scabbard(worn);
+        glPopMatrix();
+
+        /* The sword itself, inside it, exactly as the third-person hip draws
+           it. First person used to show an empty scabbard and no blade, which
+           is the one arrangement neither view was ever meant to have. */
+        if (weapon->sheathed) {
             glPushMatrix();
-            /* Through the same half turn the arms take. The spec's offsets
-               and angles are stated in the RIG's frame, where the body faces
-               +Z; the camera looks down -Z. Without this the sword would hang
-               correctly on a third-person hip and point out through the
-               player's front in first person, off one set of numbers that
-               looked right in both places separately. */
-            float worn[3];
-            arm_placement_rig_to_camera(melee->scabbard_offset, 0.0f, worn);
-            glTranslatef(worn[0], worn[1] - VIEWMODEL_HIP_BELOW_EYE, worn[2]);
-            glRotatef(ARMS_FACING_DEGREES, 0, 1, 0);
-            glRotatef(melee->scabbard_yaw, 0, 1, 0);
-            glRotatef(melee->scabbard_pitch, 1, 0, 0);
-            glRotatef(melee->scabbard_roll, 0, 0, 1);
-            weapon_model_draw_scabbard(melee);
+            glMultMatrixf(sheathed_matrix.m);
+            draw_receiver(weapon);
             glPopMatrix();
         }
     }
@@ -973,15 +982,22 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
        fist reaching for where it used to be. The lean was exactly that for as
        long as it was a glRotatef on the gun alone - the arms reached identity
        through a glLoadIdentity a few lines later and never leaned at all. */
-    float carry_weights[MELEE_CARRY_COUNT];
-    int carried = weapon_melee_carry(weapon, NULL, carry_weights);
-    if (arms && arms_rig != CHARACTER_RIG_NONE && carried) {
-        /* A stance: the sword is where the spec says and the hands are solved
-           onto its hilt, which is a rifle's arrangement applied to a sword. The
-           same matrix the sword was drawn through, so the fists close on the
-           tsuka the player is actually looking at. */
-        viewmodel_arms_draw_carry(arms, arms_rig, weapon->spec, gun_matrix,
-                                  carry_weights);
+    if (arms && arms_rig != CHARACTER_RIG_NONE && weapon->sheathed &&
+               worn_valid) {
+        /* Worn: the left hand steadies the scabbard on the hip and the right
+           comes across the body onto the tsuka standing out of its mouth.
+           Solved against the two transforms the scabbard and the sword in it
+           were actually drawn through, so the fists close on what is there.
+
+           Both hands end up down at a hip and largely out of frame, which is
+           where they are on the body that is wearing it. The pose is anchored
+           to the body rather than to the screen.
+
+           This replaces what stood here: with nothing else to draw, a sheathed
+           sword fell through to the clip branch below and posed both arms in
+           Sword_Idle around a sword that was not in them. */
+        viewmodel_arms_draw_sheathed(arms, arms_rig, weapon->spec,
+                                     sheathed_matrix.m, saya_matrix.m);
     } else if (arms && arms_rig != CHARACTER_RIG_NONE &&
                weapon_spec_melee(weapon->spec)) {
         /* A swing, a draw or a sheathe: the animated arms, with the same clip

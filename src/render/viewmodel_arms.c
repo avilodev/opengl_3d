@@ -1,4 +1,5 @@
 #include "render/viewmodel_arms.h"
+#include "gameplay/movement_tuning.h"
 #include "render/viewmodel_clip_arms.h"
 #include "render/arm_placement.h"
 #include "render/viewmodel_neck.h"
@@ -129,6 +130,14 @@ static struct {
        scale that turns its units into metres. Measured here, where the bones
        are; used there, where there are none. */
     ArmRig rig;
+
+    /* The worn pose's own placement, solved the first time a given weapon is
+       drawn sheathed. Its own slot rather than a fourth carry because it is
+       reached from two matrices rather than from a stance, and its own spec
+       pointer because nothing else invalidates it: the scabbard sits at a
+       fixed point on the body, so this answer never changes for a weapon. */
+    const WeaponSpec* sheathed_for;
+    ArmPlacement sheathed;
 
     /* The solved placement of each carry, and the spec they were solved for. A
        weapon swap re-solves; nothing else does. */
@@ -592,25 +601,27 @@ static void reload_support_direction(const WeaponSpec* spec,
 
 /* Both wrists for a weapon held at `pose`, in camera space.
 
-   BOTH walked back down their own fingers, which is the difference from
-   pose_targets: on a rifle the support point is a wrist already - the hand
-   runs along a handguard rather than closing on anything - and on a hilt both
-   hands close on the shaft, so each is a grip a fist's length out from the
-   wrist that holds it. Handing the grips straight to the solver would put both
-   wrists on the tsuka and leave two fists closed on the air beyond it. */
+   The two hands are answered differently because they are doing different
+   things. The sword hand closes on the tsuka, so its wrist is a fist's length
+   back down its own fingers from the grip - handing the grip straight to the
+   solver would put the wrist ON the hilt and leave the fist closed on the air
+   beyond it. The off hand closes on nothing: it is a wrist already, stated by
+   the spec, and walking it back off a grip it is not holding would be
+   answering a question nobody asked. */
 static void carry_targets(const WeaponSpec* spec, const ViewmodelPose* pose,
                           float targets[2][3]) {
-    for (int a = 0; a < 2; ++a) {
-        float grip[3], fingers[3], palm[3];
-        viewmodel_pose_transform_point(pose,
-                                       a ? spec->grip_left : spec->grip_right,
-                                       grip);
-        viewmodel_pose_transform_direction(pose, weapon_grip_hand_dir(spec->hold, a),
-                                           fingers);
-        viewmodel_pose_transform_direction(pose, weapon_grip_palm_dir(spec->hold, a),
-                                           palm);
-        wrist_from_grip(&g_arms.arms[a], fingers, palm, grip, targets[a]);
-    }
+    const MeleeSpec* melee = weapon_spec_melee(spec);
+
+    float grip[3], fingers[3], palm[3];
+    viewmodel_pose_transform_point(pose, spec->grip_right, grip);
+    viewmodel_pose_transform_direction(pose, weapon_grip_hand_dir(spec->hold, 0),
+                                       fingers);
+    viewmodel_pose_transform_direction(pose, weapon_grip_palm_dir(spec->hold, 0),
+                                       palm);
+    wrist_from_grip(&g_arms.arms[0], fingers, palm, grip, targets[0]);
+
+    for (int c = 0; c < 3; ++c)
+        targets[1][c] = melee ? melee->off_hand[c] : 0.0f;
 }
 
 /* Solved once per melee weapon: one placement per stance.
@@ -626,7 +637,7 @@ static void solve_for_carries(const WeaponSpec* spec, const MeleeSpec* melee) {
     for (int c = 0; c < MELEE_CARRY_COUNT; ++c) {
         carry_targets(spec, &melee->carries[c], targets);
         found[c] = arm_placement_solve(&g_arms.rig, targets,
-                                       spec->view_fov * 0.5f,
+                                       VIEWMODEL_FOV * 0.5f,
                                        &g_arms.carry[c]);
     }
 
@@ -669,13 +680,13 @@ static void solve_for_weapon(const WeaponSpec* spec) {
     float targets[2][3];
 
     pose_targets(spec, 0.0f, 0.0f, 0.0f, targets);
-    int hip = arm_placement_solve(&g_arms.rig, targets, spec->view_fov * 0.5f,
+    int hip = arm_placement_solve(&g_arms.rig, targets, VIEWMODEL_FOV * 0.5f,
                                   &g_arms.hip);
     /* Against the hip field of view, not the aimed one: a sprint is a hip
        state, and the gun is drawn through its wide projection throughout. */
     pose_targets(spec, 1.0f, 0.0f, 0.0f, targets);
     int sprinting = arm_placement_solve(&g_arms.rig, targets,
-                                        spec->view_fov * 0.5f, &g_arms.sprint);
+                                        VIEWMODEL_FOV * 0.5f, &g_arms.sprint);
     pose_targets(spec, 0.0f, 0.0f, 1.0f, targets);
     int aimed = arm_placement_solve(&g_arms.rig, targets,
                                     weapon_spec_view_ads_fov(spec) * 0.5f, &g_arms.ads);
@@ -712,7 +723,7 @@ static void solve_for_weapon(const WeaponSpec* spec) {
         wrist_from_grip(&g_arms.arms[0], fingers, palm, grip, targets[0]);
         key_hand(&track->keys[i], &held, targets[1]);
         if (arm_placement_solve_near(&g_arms.rig, targets,
-                                     spec->view_fov * 0.5f, previous,
+                                     VIEWMODEL_FOV * 0.5f, previous,
                                      &g_arms.reload[i]))
             previous = &g_arms.reload[i];
         else
@@ -1323,6 +1334,89 @@ void viewmodel_arms_draw(const CharacterLibrary* library, int rig,
     draw_solved(model, targets, anchor, blade);
 }
 
+/* Both wrists for a weapon that is WORN rather than held, in camera space.
+
+   Two matrices because there are two objects and the hands are on different
+   ones: the right on the tsuka, which stands out of the mouth of the scabbard,
+   and the left on the scabbard itself further down. Both are real grips - two
+   fists closed on one line - which is the arrangement WEAPON_HOLD_HILT's
+   second entry was written for and the one place it is read. */
+static void sheathed_targets(const WeaponSpec* spec, const MeleeSpec* melee,
+                             const Mat4* sword, const Mat4* saya,
+                             float targets[2][3]) {
+    for (int a = 0; a < 2; ++a) {
+        const Mat4* on = a ? saya : sword;
+        float fingers[3], palm[3], grip[3];
+        mat4_transform_direction(on, weapon_grip_hand_dir(spec->hold, a),
+                                 fingers);
+        mat4_transform_direction(on, weapon_grip_palm_dir(spec->hold, a), palm);
+        mat4_transform_point(on, a ? melee->saya_grip : spec->grip_right, grip);
+        wrist_from_grip(&g_arms.arms[a], fingers, palm, grip, targets[a]);
+    }
+}
+
+int viewmodel_arms_draw_sheathed(const CharacterLibrary* library, int rig,
+                                 const WeaponSpec* spec,
+                                 const float sword_matrix[16],
+                                 const float saya_matrix[16]) {
+    if (g_arms.state == ARMS_FAILED) return 0;
+    if (g_arms.state != ARMS_READY && !build(library, rig)) return 0;
+    if (character_library_model(library, rig) != g_arms.model) return 0;
+    const MeleeSpec* melee = spec ? weapon_spec_melee(spec) : NULL;
+    if (!melee || !sword_matrix || !saya_matrix) return 0;
+
+    const SkinnedModel* model = g_arms.model;
+    Mat4 sword, saya;
+    memcpy(sword.m, sword_matrix, sizeof sword.m);
+    memcpy(saya.m, saya_matrix, sizeof saya.m);
+
+    /* The wrists first, then where the shoulders have to be to own them, then
+       the wrists again in the rig's own space now that the blade is known.
+       Two passes over one arrangement, because the second needs an answer the
+       first is what produces. */
+    float targets[2][3];
+    sheathed_targets(spec, melee, &sword, &saya, targets);
+
+    if (g_arms.sheathed_for != spec) {
+        if (!arm_placement_solve(&g_arms.rig, targets, VIEWMODEL_FOV * 0.5f,
+                                 &g_arms.sheathed)) {
+            /* The same fallback the other paths take, and named for the same
+               reason: the search hands back a placement whether or not it
+               found a comfortable one. */
+            ArmPlacement fallback = {0.10f, 45.0f};
+            g_arms.sheathed = fallback;
+            printf("First-person arms: no shoulder placement reaches %s worn "
+                   "on the hip; using a fallback\n", spec->name);
+        }
+        g_arms.sheathed_for = spec;
+    }
+
+    float anchor[3];
+    arm_placement_anchor(g_arms.sheathed, anchor);
+    float blade = g_arms.sheathed.blade;
+
+    float model_targets[2][3];
+    for (int a = 0; a < 2; ++a) {
+        const Mat4* on = a ? &saya : &sword;
+        float fingers[3], palm[3];
+        mat4_transform_direction(on, weapon_grip_hand_dir(spec->hold, a),
+                                 fingers);
+        mat4_transform_direction(on, weapon_grip_palm_dir(spec->hold, a), palm);
+        g_arms.arms[a].hand_roll = 0.0f;
+        arm_placement_rig_from_camera(fingers, blade, g_arms.arms[a].hand_dir);
+        const float* want = weapon_grip_palm_dir(spec->hold, a);
+        if (want[0] != 0.0f || want[1] != 0.0f || want[2] != 0.0f)
+            arm_placement_rig_from_camera(palm, blade, g_arms.arms[a].palm_dir);
+        else
+            memset(g_arms.arms[a].palm_dir, 0, sizeof g_arms.arms[a].palm_dir);
+        arm_placement_to_model_space(&g_arms.rig, targets[a], anchor, blade,
+                                     model_targets[a]);
+    }
+
+    draw_solved(model, model_targets, anchor, blade);
+    return 1;
+}
+
 int viewmodel_arms_draw_carry(const CharacterLibrary* library, int rig,
                               const WeaponSpec* spec,
                               const float gun_matrix[16],
@@ -1330,7 +1424,8 @@ int viewmodel_arms_draw_carry(const CharacterLibrary* library, int rig,
     if (g_arms.state == ARMS_FAILED) return 0;
     if (g_arms.state != ARMS_READY && !build(library, rig)) return 0;
     if (character_library_model(library, rig) != g_arms.model) return 0;
-    if (!spec || !weapon_spec_melee(spec) || !gun_matrix || !weights) return 0;
+    const MeleeSpec* melee = weapon_spec_melee(spec);
+    if (!spec || !melee || !gun_matrix || !weights) return 0;
     if (spec != g_arms.solved_for) solve_for_weapon(spec);
 
     const SkinnedModel* model = g_arms.model;
@@ -1361,25 +1456,41 @@ int viewmodel_arms_draw_carry(const CharacterLibrary* library, int rig,
     memcpy(sword.m, gun_matrix, sizeof sword.m);
 
     float targets[2][3];
-    for (int a = 0; a < 2; ++a) {
-        float fingers[3], palm[3], grip[3], wrist[3];
-        mat4_transform_direction(&sword, weapon_grip_hand_dir(spec->hold, a), fingers);
-        mat4_transform_direction(&sword, weapon_grip_palm_dir(spec->hold, a), palm);
-        g_arms.arms[a].hand_roll = 0.0f;
-        arm_placement_rig_from_camera(fingers, blade, g_arms.arms[a].hand_dir);
-        const float* want = weapon_grip_palm_dir(spec->hold, a);
-        if (want[0] != 0.0f || want[1] != 0.0f || want[2] != 0.0f)
-            arm_placement_rig_from_camera(palm, blade, g_arms.arms[a].palm_dir);
-        else
-            memset(g_arms.arms[a].palm_dir, 0,
-                   sizeof g_arms.arms[a].palm_dir);
 
-        /* Both hands walked back off their own grip - see carry_targets. */
-        mat4_transform_point(&sword, a ? spec->grip_left : spec->grip_right,
-                             grip);
-        wrist_from_grip(&g_arms.arms[a], fingers, palm, grip, wrist);
+    /* The sword hand: onto the tsuka, off the live transform. */
+    {
+        float fingers[3], palm[3], grip[3], wrist[3];
+        mat4_transform_direction(&sword, weapon_grip_hand_dir(spec->hold, 0),
+                                 fingers);
+        mat4_transform_direction(&sword, weapon_grip_palm_dir(spec->hold, 0),
+                                 palm);
+        g_arms.arms[0].hand_roll = 0.0f;
+        arm_placement_rig_from_camera(fingers, blade, g_arms.arms[0].hand_dir);
+        const float* want = weapon_grip_palm_dir(spec->hold, 0);
+        if (want[0] != 0.0f || want[1] != 0.0f || want[2] != 0.0f)
+            arm_placement_rig_from_camera(palm, blade, g_arms.arms[0].palm_dir);
+        else
+            memset(g_arms.arms[0].palm_dir, 0, sizeof g_arms.arms[0].palm_dir);
+
+        /* Walked back off the grip - see carry_targets. */
+        mat4_transform_point(&sword, spec->grip_right, grip);
+        wrist_from_grip(&g_arms.arms[0], fingers, palm, grip, wrist);
         arm_placement_to_model_space(&g_arms.rig, wrist, anchor, blade,
-                                     targets[a]);
+                                     targets[0]);
+    }
+
+    /* The off hand: where the spec parks it, and not on the sword at all. Its
+       roll is left free - there is no grip to pin it against, and a palm
+       turned to face a hilt this hand is nowhere near is a wrist rolled for a
+       reason the player cannot see. It does not read the live transform for
+       the same reason: a hand holding nothing has nothing to track. */
+    {
+        g_arms.arms[1].hand_roll = 0.0f;
+        arm_placement_rig_from_camera(melee->off_hand_dir, blade,
+                                      g_arms.arms[1].hand_dir);
+        memset(g_arms.arms[1].palm_dir, 0, sizeof g_arms.arms[1].palm_dir);
+        arm_placement_to_model_space(&g_arms.rig, melee->off_hand, anchor,
+                                     blade, targets[1]);
     }
 
     draw_solved(model, targets, anchor, blade);
