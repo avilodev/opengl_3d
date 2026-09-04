@@ -6,7 +6,6 @@
 #include "gameplay/traversal.h"
 #include "gameplay/arena.h"
 #include "gameplay/combatant.h"
-#include "render/viewmodel_neck.h"
 #include "utils/math_utils.h"
 
 #include <stdio.h>
@@ -670,27 +669,6 @@ void weapon_tracer_origin(const Weapon* weapon, const PlayerController* player,
                             gun ? -gun->muzzle_forward : 0.0f};
     float tip[3];
     viewmodel_pose_transform_point(&pose, local, tip);
-
-    /* And then the body the gun is held by. The renderer draws the whole
-       viewmodel through a neck - the cant of a lean and the pitch of a torso
-       the eye has turned away from - so a barrel taken off the pose alone is a
-       barrel the mesh has already moved. Through the module rather than
-       recomposed here: this used to be a hand-rolled cos/sin pair for the lean,
-       one of three copies, and the neck would have made it six.
-
-       The round itself is untouched. It leaves the eye along weapon_aim_angles
-       as it always has; what a neck can move is the streak, and only because
-       the streak has to start at the muzzle the player can SEE.
-
-       Built from the angles this function was handed, which are the aim's and
-       not strictly the camera's - they differ by the recoil kick, worth under a
-       degree of neck. That is already the frame the basis below is built in,
-       and a barrel expressed in one frame and rotated in another would be the
-       real error. */
-    ViewmodelNeck neck;
-    viewmodel_neck_build(&neck, weapon->spec, pitch_degrees, player->lean,
-                         weapon->ads);
-    viewmodel_neck_transform_point(&neck, tip, tip);
     float ox = tip[0], oy = tip[1], oz = tip[2];
 
     /* The gun is drawn through its OWN projection and the tracer through the
@@ -705,12 +683,7 @@ void weapon_tracer_origin(const Weapon* weapon, const PlayerController* player,
        depth and scale the lateral part by the ratio of the tangents. The result
        is further out in metres than the barrel really is, which costs nothing -
        a tracer is a streak whose direction the eye reads, and the round itself
-       leaves the eye regardless.
-
-       Last, after the neck rather than before it. This is a screen-space
-       correction and what it has to correct is where the barrel ENDS UP: it
-       commuted with the lean, which is a rotation about the eye, and it does
-       not commute with a neck, which turns about a joint behind it. */
+       leaves the eye regardless. */
     float world_tangent = tanf(view_fov_degrees * 0.5f * MATH_DEG_TO_RAD);
     float gun_fov = lerpf(weapon->spec->view_fov, weapon_spec_view_ads_fov(weapon->spec),
                           weapon->ads);
@@ -720,6 +693,14 @@ void weapon_tracer_origin(const Weapon* weapon, const PlayerController* player,
         ox *= widen;
         oy *= widen;
     }
+
+    /* The renderer cants the complete camera-space weapon during a lean. Keep
+       the visible tracer attached to that transformed barrel. */
+    float lean_angle = player->lean * VIEWMODEL_LEAN_ROLL * MATH_DEG_TO_RAD;
+    float leaned_ox = ox * cosf(lean_angle) - oy * sinf(lean_angle);
+    float leaned_oy = ox * sinf(lean_angle) + oy * cosf(lean_angle);
+    ox = leaned_ox;
+    oy = leaned_oy;
 
     /* The first-person camera itself shifts during a peek. Start the visible
        barrel from that same lateral origin before applying its local pose, so
@@ -1136,8 +1117,8 @@ void weapon_update(Weapon* weapon, const WeaponCommand* command,
        no trigger, no cone, no magazine. The sheathe is the one thing the two
        halves share a button for. */
     if (weapon_spec_melee(weapon->spec)) {
-        if (command->reload_pressed) weapon_toggle_sheathe(weapon);
-        else melee_update(weapon, command, delta_time);
+        if (command->reload_pressed) { weapon_toggle_sheathe(weapon); return; }
+        melee_update(weapon, command, delta_time);
         return;
     }
 

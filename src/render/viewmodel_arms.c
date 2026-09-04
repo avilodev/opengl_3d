@@ -139,6 +139,7 @@ static struct {
        resting at the hip, and blending the two placements by the same weights
        the stances are blended by is what keeps the shoulders and the hands
        from being a stance out of step. */
+    ArmPlacement carry[MELEE_CARRY_COUNT];
     /* One per key of the reload track, solved at load like the three above.
        The support hand leaves the weapon during a reload and no single
        placement follows it, so the shoulders walk between these as it goes. */
@@ -589,16 +590,81 @@ static void reload_support_direction(const WeaponSpec* spec,
     *wrist_roll = wanted_roll * blend->reload;
 }
 
+/* Both wrists for a weapon held at `pose`, in camera space.
+
+   BOTH walked back down their own fingers, which is the difference from
+   pose_targets: on a rifle the support point is a wrist already - the hand
+   runs along a handguard rather than closing on anything - and on a hilt both
+   hands close on the shaft, so each is a grip a fist's length out from the
+   wrist that holds it. Handing the grips straight to the solver would put both
+   wrists on the tsuka and leave two fists closed on the air beyond it. */
+static void carry_targets(const WeaponSpec* spec, const ViewmodelPose* pose,
+                          float targets[2][3]) {
+    for (int a = 0; a < 2; ++a) {
+        float grip[3], fingers[3], palm[3];
+        viewmodel_pose_transform_point(pose,
+                                       a ? spec->grip_left : spec->grip_right,
+                                       grip);
+        viewmodel_pose_transform_direction(pose, weapon_grip_hand_dir(spec->hold, a),
+                                           fingers);
+        viewmodel_pose_transform_direction(pose, weapon_grip_palm_dir(spec->hold, a),
+                                           palm);
+        wrist_from_grip(&g_arms.arms[a], fingers, palm, grip, targets[a]);
+    }
+}
+
+/* Solved once per melee weapon: one placement per stance.
+
+   The sibling of the firearm path below, and deliberately not a branch inside
+   it - a sword has no sprint carry, no aim and no reload track, and asking it
+   for one is a null dereference at the first draw. What the two share is the
+   shape: a weapon states where it is held and where its grips are, and where
+   the shoulders have to be to reach them is solved rather than tuned. */
+static void solve_for_carries(const WeaponSpec* spec, const MeleeSpec* melee) {
+    float targets[2][3];
+    int found[MELEE_CARRY_COUNT];
+    for (int c = 0; c < MELEE_CARRY_COUNT; ++c) {
+        carry_targets(spec, &melee->carries[c], targets);
+        found[c] = arm_placement_solve(&g_arms.rig, targets,
+                                       spec->view_fov * 0.5f,
+                                       &g_arms.carry[c]);
+    }
+
+    /* The same fallback the gun path takes, for the same reason: the search
+       returns a placement whether or not it found a comfortable one, so a
+       stance nobody can reach would otherwise draw arms clamped straight at
+       whatever it last tried and look like a stance somebody chose. The guard
+       is tried first as the donor because it is the stance the sword spends
+       its visible life in. */
+    int donor = found[MELEE_CARRY_GUARD] ? MELEE_CARRY_GUARD : -1;
+    for (int c = 0; c < MELEE_CARRY_COUNT && donor < 0; ++c)
+        if (found[c]) donor = c;
+    if (donor < 0) {
+        ArmPlacement fallback = {0.10f, 45.0f};
+        for (int c = 0; c < MELEE_CARRY_COUNT; ++c) g_arms.carry[c] = fallback;
+        printf("First-person arms: no shoulder placement reaches %s's hilt; "
+               "using a fallback\n", spec->name);
+    } else {
+        for (int c = 0; c < MELEE_CARRY_COUNT; ++c)
+            if (!found[c]) g_arms.carry[c] = g_arms.carry[donor];
+    }
+
+    g_arms.solved_for = spec;
+    printf("First-person arms for %s: rest z %+.2f blade %.0f deg, "
+           "guard z %+.2f blade %.0f deg, momentum z %+.2f blade %.0f deg\n",
+           spec->name,
+           g_arms.carry[MELEE_CARRY_REST].z, g_arms.carry[MELEE_CARRY_REST].blade,
+           g_arms.carry[MELEE_CARRY_GUARD].z, g_arms.carry[MELEE_CARRY_GUARD].blade,
+           g_arms.carry[MELEE_CARRY_MOMENTUM].z,
+           g_arms.carry[MELEE_CARRY_MOMENTUM].blade);
+}
+
 /* Solved once per weapon. A gun states two grip points and a hold; where the
    shoulders have to be to reach them is this function's problem, which is the
    whole reason a new gun is a data change and not an edit in here. */
 static void solve_for_weapon(const WeaponSpec* spec) {
-    /* A melee weapon has nothing to solve. Its arms come from a clip, every
-       frame of them - see viewmodel_arms_draw_pose - so there is no stance for
-       a shoulder search to reach and no grip for a wrist to be walked back
-       from. This used to solve three carries and hand them to a second draw
-       path; both are gone. */
-    if (weapon_spec_melee(spec)) return;
+    const MeleeSpec* melee = weapon_spec_melee(spec);
+    if (melee) { solve_for_carries(spec, melee); return; }
 
     float targets[2][3];
 
@@ -1169,9 +1235,11 @@ void viewmodel_arms_draw(const CharacterLibrary* library, int rig,
        past the end of it. Cheaper to check than to reason about. */
     if (character_library_model(library, rig) != g_arms.model) return;
     if (!spec) return;
-    /* Guns only. A sword's arms come from a clip and never from this solve, so
-       there is no placement here for one - this is so a caller that forgets
-       gets nothing rather than arms hung off an uninitialized one. */
+    /* Guns only. A melee weapon's placements are its stances, solved by
+       solve_for_carries, and this path would read the three a firearm has -
+       which for a sword were never solved at all. The renderer picks between
+       the two on weapon_melee_carry; this is here so a caller that forgets
+       gets nothing rather than arms hung off an uninitialized placement. */
     if (weapon_spec_melee(spec)) return;
     /* A weapon swap is the only thing that re-solves. */
     if (spec != g_arms.solved_for) solve_for_weapon(spec);
@@ -1254,6 +1322,70 @@ void viewmodel_arms_draw(const CharacterLibrary* library, int rig,
 
     draw_solved(model, targets, anchor, blade);
 }
+
+int viewmodel_arms_draw_carry(const CharacterLibrary* library, int rig,
+                              const WeaponSpec* spec,
+                              const float gun_matrix[16],
+                              const float weights[MELEE_CARRY_COUNT]) {
+    if (g_arms.state == ARMS_FAILED) return 0;
+    if (g_arms.state != ARMS_READY && !build(library, rig)) return 0;
+    if (character_library_model(library, rig) != g_arms.model) return 0;
+    if (!spec || !weapon_spec_melee(spec) || !gun_matrix || !weights) return 0;
+    if (spec != g_arms.solved_for) solve_for_weapon(spec);
+
+    const SkinnedModel* model = g_arms.model;
+
+    /* Where the shoulders are for this mixture of stances - the same three
+       weights the sword's own pose was blended from, so the placement and the
+       point it has to reach are never a stance out of step. Folded in against
+       the running total, which for two scalars is the weighted average. */
+    ArmPlacement placement = g_arms.carry[0];
+    float total = weights[0];
+    for (int c = 1; c < MELEE_CARRY_COUNT; ++c) {
+        total += weights[c];
+        if (total <= 1e-6f) continue;
+        float t = weights[c] / total;
+        placement.z = lerpf(placement.z, g_arms.carry[c].z, t);
+        placement.blade = lerpf(placement.blade, g_arms.carry[c].blade, t);
+    }
+    float anchor[3];
+    arm_placement_anchor(placement, anchor);
+    float blade = placement.blade;
+
+    /* The grips off the LIVE sword transform rather than off the blended
+       stance, for the reason the gun path reads its own matrix: the bob, the
+       sway and the neck are all on the drawn sword and none of them are in the
+       stance the shoulders were solved against. The shoulders are a resting
+       calibration; the hands track what is actually on screen. */
+    Mat4 sword;
+    memcpy(sword.m, gun_matrix, sizeof sword.m);
+
+    float targets[2][3];
+    for (int a = 0; a < 2; ++a) {
+        float fingers[3], palm[3], grip[3], wrist[3];
+        mat4_transform_direction(&sword, weapon_grip_hand_dir(spec->hold, a), fingers);
+        mat4_transform_direction(&sword, weapon_grip_palm_dir(spec->hold, a), palm);
+        g_arms.arms[a].hand_roll = 0.0f;
+        arm_placement_rig_from_camera(fingers, blade, g_arms.arms[a].hand_dir);
+        const float* want = weapon_grip_palm_dir(spec->hold, a);
+        if (want[0] != 0.0f || want[1] != 0.0f || want[2] != 0.0f)
+            arm_placement_rig_from_camera(palm, blade, g_arms.arms[a].palm_dir);
+        else
+            memset(g_arms.arms[a].palm_dir, 0,
+                   sizeof g_arms.arms[a].palm_dir);
+
+        /* Both hands walked back off their own grip - see carry_targets. */
+        mat4_transform_point(&sword, a ? spec->grip_left : spec->grip_right,
+                             grip);
+        wrist_from_grip(&g_arms.arms[a], fingers, palm, grip, wrist);
+        arm_placement_to_model_space(&g_arms.rig, wrist, anchor, blade,
+                                     targets[a]);
+    }
+
+    draw_solved(model, targets, anchor, blade);
+    return 1;
+}
+
 int viewmodel_arms_draw_pose(const CharacterLibrary* library, int rig,
                              const Pose* pose, const float offset[3]) {
     if (g_arms.state == ARMS_FAILED) return 0;

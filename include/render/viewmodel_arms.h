@@ -82,19 +82,11 @@ void viewmodel_arms_support_target(const WeaponSpec* spec,
                                    const ViewmodelBlend* blend,
                                    const Mat4* gun, float out[3]);
 
-/* Draws an arm pose that came from somewhere else - a clip, rather than this
-   file's solve. The same instance, the same cut, the same anchor and scale;
-   only the pose is another module's. Exposed so the clip-driven arms do not
-   need a second skinned instance and a second copy of the forearm cut, which is
-   the only part of this file a sword has any use for.
-
-   EVERY frame of a melee weapon comes through here: the hold, a swing, a draw
-   and a sheathe alike. There used to be a solved sibling for the hold - the
-   sword placed at an authored stance with both fists driven onto its hilt - and
-   the switch between the two was a seam nothing could blend, because a clip is
-   anchored on the eye it was sampled at and a solve hangs off a searched
-   shoulder. One path now, and it is the one the animator drew, which is also
-   what a third-person body plays.
+/* Draws an arm pose that came from somewhere else - a swing clip, rather than
+   this file's solve. The same instance, the same cut, the same anchor and
+   scale; only the pose is another module's. Exposed so the clip-driven arms do
+   not need a second skinned instance and a second copy of the forearm cut,
+   which is the only part of this file a sword has any use for.
 
    `offset` is the same camera-space shift the weapon's own pose is given -
    MeleeSpec.view_clip_offset - and it is passed in rather than looked up

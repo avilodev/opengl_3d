@@ -64,6 +64,12 @@ static void expect(int ok, const char* what) {
 /* The same, for an invariant asserted on every frame of a loop: it prints only
    when it breaks, because two hundred identical ok lines is a report nobody
    reads and one FAIL buried in them is a report nobody reads twice. */
+static void expect_quiet(int ok, const char* what) {
+    if (ok) return;
+    ++failures;
+    printf("   FAIL %s\n", what);
+}
+
 /* The renderer's own transform chain, rebuilt as arithmetic. If a point through
    this and the same point through viewmodel_pose_transform_point disagree, the
    tracer leaves a muzzle the mesh has rotated away from - which is the bug the
@@ -1513,6 +1519,27 @@ static int probe_arms_ready(const SkinnedModel* model) {
 
 /* Grips to wrists for one pose. `on_gun` says whether the support grip is the
    handguard, which is aimed off the gun, or a reload key, which is not. */
+/* Both wrists for a weapon held on a hilt, where each hand closes on a grip
+   point of its own and neither is an authored wrist. The sibling of the
+   function below, and a copy of carry_targets in viewmodel_arms.c for the
+   reason the tables above are copied. */
+static void probe_carry_targets(const WeaponSpec* spec,
+                                const ViewmodelPose* pose,
+                                float targets[2][3]) {
+    for (int a = 0; a < 2; ++a) {
+        float grip[3], fingers[3], palm[3];
+        viewmodel_pose_transform_point(pose,
+                                       a ? spec->grip_left : spec->grip_right,
+                                       grip);
+        viewmodel_pose_transform_direction(pose, PROBE_HAND_DIR[spec->hold][a],
+                                           fingers);
+        viewmodel_pose_transform_direction(pose, PROBE_PALM_DIR[spec->hold][a],
+                                           palm);
+        probe_wrist_from_grip(&g_probe_arms[a], fingers, palm, grip,
+                              targets[a]);
+    }
+}
+
 static void probe_wrist_targets(const WeaponSpec* spec,
                                 const ViewmodelPose* pose,
                                 const float grip[2][3], float targets[2][3]) {
@@ -2473,11 +2500,9 @@ static void check_sword_neck(void) {
     expect(katana->neck_follow > rifle->neck_follow,
            "the sword follows its body further than the rifle does");
 
-    /* A point where a held hilt sits, through the neck, across pitch and
-       glance. The figures are not the point - it is that they MOVE, and by how
-       much, which is the whole difference between a carried sword and one taped
-       to the lens. Stated here rather than sampled off a clip because what is
-       being measured is the NECK, and a rotation does not care what it turns. */
+    /* The guard, through the neck, across pitch and glance. The point is not any
+       one of these figures - it is that they MOVE, and by how much, which is the
+       whole difference between a carried sword and one taped to the lens. */
     const float guard[3] = {0.09f, -0.16f, -0.42f};
     const float pitches[3] = {0.0f, 35.0f, 70.0f};
     const float glances[2] = {0.0f, 40.0f};
@@ -2495,9 +2520,9 @@ static void check_sword_neck(void) {
     }
     viewmodel_neck_set_look_yaw(0.0f);
 
-    /* Level and square is the one pose the neck must not touch: a body that has
-       neither pitched nor turned has nothing to have been left behind by, so
-       whatever the hold puts on screen there is what the animator drew. */
+    /* Level and square is the one pose the neck must not touch: it is where
+       every carry was authored, and a body that has neither pitched nor turned
+       has nothing to have been left behind by. */
     ViewmodelNeck square;
     viewmodel_neck_build(&square, katana, 0.0f, 0.0f, 0.0f);
     float at[3];
@@ -2517,70 +2542,276 @@ static void check_sword_neck(void) {
            "a look at the sky drops the guard out of the bottom of the frame");
 }
 
-/* ---- 15. the sword's hold ----
+/* ---- 15. the sword's carries ----
 
-   A katana's hold used to be BUILT - three stances stated in camera space, both
-   fists driven onto the hilt by the same IK a rifle's grips use - because every
-   candidate clip is a third-person idle whose hands sample well below and behind
-   the eye. The stances were visible and the clip is not, and that was the whole
-   argument for them.
+   A katana is a weapon with both halves now: swings are clips, and holds are
+   solved carries reached through the same IK a rifle's grips are. What that
+   buys has to be checked here rather than looked at, for the reason section 4
+   exists - the placement search FALLS BACK when it cannot reach a pose rather
+   than refusing to draw, so a stance nobody's arms can hold looks exactly like
+   a stance somebody chose.
 
-   They are gone, deliberately: what first person shows is now the pose the
-   animator drew, which is the pose anyone watching the player sees. So the thing
-   left to check is not that the hold is on screen - it is not, and is not meant
-   to be - but that it is the SAME hold in both views, and that the hands are
-   where a third-person idle actually puts them rather than somewhere a bug put
-   them. Where they land is printed, because "off the bottom of the frame" is a
-   measurement and not a verdict. */
-static void check_sword_hold(const SkinnedModel* model) {
-    const WeaponSpec* spec = &WEAPON_SPEC_KATANA;
+   And the thing this whole section is for: the guard is visible and the low
+   rest is not, and the rest is invisible BECAUSE the hands are at the hip.
+   That is the distinction between a stance and a bug, and it is a number. */
+
+static const char* CARRY_NAME[MELEE_CARRY_COUNT] = {
+    "low rest", "guard", "momentum",
+};
+
+/* A camera-space point of the sword at a stance, on screen as a fraction of
+   half the frame. Zero if it is behind the eye. */
+static int carry_screen(const WeaponSpec* spec, const ViewmodelPose* pose,
+                        const float local[3], float out[2]) {
+    float at[3];
+    viewmodel_pose_transform_point(pose, local, at);
+    float depth = -at[2];
+    if (depth <= 0.02f) return 0;
+    float tangent = tanf(spec->view_fov * 0.5f * MATH_DEG_TO_RAD);
+    out[0] = (at[0] / depth) / (tangent * 16.0f / 9.0f);
+    out[1] = (at[1] / depth) / tangent;
+    return 1;
+}
+
+static int carry_in_frame(const float s[2]) {
+    return fabsf(s[0]) <= 1.0f && fabsf(s[1]) <= 1.0f;
+}
+
+static void check_carries(const WeaponSpec* spec, const SkinnedModel* model,
+                          const ArmRig* rig) {
+    printf("\n15. the sword is held rather than sampled (%s)\n", spec->name);
     const MeleeSpec* melee = weapon_spec_melee(spec);
-    if (!melee) return;
-    printf("\n15. the sword is held by the clip, in both views\n");
-
-    /* The hold the game will actually play: whatever weapon_melee_clip names
-       for an idle sword, which is the spec's own middle aim clip and the same
-       string the third-person body holds it in. */
-    Weapon weapon;
-    weapon_init(&weapon, spec);
-    weapon.sheathed = 0;
-    float time = 0.0f;
-    const char* name = weapon_melee_clip(&weapon, &time);
-    expect(name != NULL, "an idle sword names a clip to be held in");
-    if (!name) return;
-    expect(spec->clips.aim[1] && strcmp(name, spec->clips.aim[1]) == 0,
-           "and it is the one the third-person body plays");
-
-    int clip = viewmodel_clip_arms_find(model, name);
-    if (clip < 0) { expect(0, "the rig has that clip"); return; }
-
-    Pose arms;
-    ViewmodelPose base;
-    if (!viewmodel_clip_arms_base(model, clip, time, spec, &arms, &base)) {
-        expect(0, "and it samples through the eye");
+    if (!melee) { ++failures; printf("   FAIL not a melee weapon\n"); return; }
+    if (!probe_arms_ready(model)) {
+        ++failures;
+        printf("   FAIL the rig has no arms to hold it with\n");
         return;
     }
 
-    /* Where the hands and the tip end up, in camera space and then on screen.
-       Printed rather than asserted: a hold that is out of frame at rest is the
-       cost of showing the drawn pose, and the player who wants to see the sword
-       looks down at it. */
-    float hilt[3], tip[3];
-    viewmodel_pose_transform_point(&base, spec->grip_right, hilt);
-    viewmodel_pose_transform_point(&base, melee->blade_tip, tip);
-    printf("   the right fist sits %.0fcm below the eye and %.0fcm behind it\n",
-           -hilt[1] * 100.0f, hilt[2] * 100.0f);
-    printf("   hilt (%+.3f %+.3f %+.3f), tip (%+.3f %+.3f %+.3f)\n",
-           hilt[0], hilt[1], hilt[2], tip[0], tip[1], tip[2]);
+    /* The grips, against the mesh they are measured off. The tsuka's own
+       landmarks are in KATANA_MELEE's comment: the origin is its middle and
+       the guard is 0.1131 forward of that, so the grip runs from -0.113 to
+       +0.113 and two fists have to fit inside it, forward hand first. */
+    const float tsuka = 0.1131f;
+    expect(spec->hold == WEAPON_HOLD_HILT,
+           "a sword is held on a hilt and not on a pistol grip");
+    expect(spec->grip_right[2] > -tsuka && spec->grip_right[2] < 0.0f,
+           "the forward hand is on the tsuka, under the guard");
+    expect(spec->grip_left[2] > 0.0f && spec->grip_left[2] < tsuka,
+           "and the rear hand behind it, still on the tsuka");
+    float apart = spec->grip_left[2] - spec->grip_right[2];
+    printf("   the fists sit %.0fcm apart on a %.0fcm grip\n",
+           apart * 100.0f, tsuka * 200.0f);
+    expect(apart > 0.07f && apart < tsuka * 2.0f,
+           "a fist's width apart, and both still on the grip");
+    expect(spec->grip_right[1] == 0.0f && spec->grip_left[1] == 0.0f,
+           "and on the hilt's own axis - a sword has nothing hanging under it");
 
-    /* The one thing that must be true: it is in front of the body and below the
-       eye, which is a hand holding a sword rather than a rig that failed to
-       anchor. A pose that came out ABOVE the eye or behind the head is the
-       anchor being wrong, and that is a bug in any view. */
-    expect(hilt[1] < 0.0f, "the hand is below the eye, where a hand is");
-    expect(fabsf(hilt[0]) < 1.5f && fabsf(hilt[1]) < 1.5f &&
-           fabsf(hilt[2]) < 1.5f,
-           "and within arm's reach of it, so the anchor found the eye");
+    /* Every stance reachable at a comfortable bend, which is what the solve
+       is for and what its fallback would hide. */
+    ArmPlacement placement[MELEE_CARRY_COUNT];
+    for (int c = 0; c < MELEE_CARRY_COUNT; ++c) {
+        float targets[2][3];
+        probe_carry_targets(spec, &melee->carries[c], targets);
+        int found = arm_placement_solve(rig, targets, spec->view_fov * 0.5f,
+                                        &placement[c]);
+        float firing = arm_placement_reach_fraction(rig, 0, targets[0],
+                                                    placement[c]);
+        float support = arm_placement_reach_fraction(rig, 1, targets[1],
+                                                     placement[c]);
+        int ok = found && firing >= 0.66f && firing <= 0.80f &&
+                 support >= 0.66f && support <= 0.80f;
+        if (!ok) ++failures;
+        printf("  %s %-12s z %+.2f blade %2.0f deg   forward %.2f  rear %.2f\n",
+               ok ? "ok  " : "FAIL", CARRY_NAME[c], placement[c].z,
+               placement[c].blade, firing, support);
+    }
+
+    /* And what each stance actually puts on the screen. The tip is the point
+       that matters: the origin is the middle of a grip the hands are around,
+       and what says whether there is a sword in frame is where the blade
+       went. */
+    const float* tip = melee->blade_tip;
+    float hands[MELEE_CARRY_COUNT][2], point[MELEE_CARRY_COUNT][2];
+    int on_hands[MELEE_CARRY_COUNT], on_point[MELEE_CARRY_COUNT];
+    for (int c = 0; c < MELEE_CARRY_COUNT; ++c) {
+        const float origin[3] = {0.0f, 0.0f, 0.0f};
+        on_hands[c] = carry_screen(spec, &melee->carries[c], origin, hands[c]) &&
+                      carry_in_frame(hands[c]);
+        on_point[c] = carry_screen(spec, &melee->carries[c], tip, point[c]) &&
+                      carry_in_frame(point[c]);
+        printf("   %-12s hands (%+.2f %+.2f)%s  tip (%+.2f %+.2f)%s\n",
+               CARRY_NAME[c], hands[c][0], hands[c][1],
+               on_hands[c] ? " in " : " out",
+               point[c][0], point[c][1], on_point[c] ? " in " : " out");
+    }
+
+    expect(on_point[MELEE_CARRY_GUARD],
+           "the guard puts the blade on screen - this is the one you see");
+    expect(point[MELEE_CARRY_GUARD][1] > 0.0f,
+           "and rising through the frame rather than lying across the bottom");
+    expect(on_hands[MELEE_CARRY_GUARD],
+           "with the hands under it, in frame");
+
+    expect(!on_point[MELEE_CARRY_REST] && !on_hands[MELEE_CARRY_REST],
+           "the low rest shows nothing at all");
+    /* The half of that which makes it a stance. A pose that is off screen
+       because it is behind the eye, or a metre to the left, is a bug that
+       happens to be invisible; this one is off screen because the hands are
+       down at the belt, which is where a sword at rest is. */
+    printf("   at rest the hands sit %.0fcm below the eye, against a belt at "
+           "%.0fcm\n", -melee->carries[MELEE_CARRY_REST].y * 100.0f,
+           VIEWMODEL_HIP_BELOW_EYE * 100.0f);
+    expect(melee->carries[MELEE_CARRY_REST].y < -0.40f &&
+           melee->carries[MELEE_CARRY_REST].y > -VIEWMODEL_HIP_BELOW_EYE,
+           "and it is invisible because the hands are at the hip");
+    expect(melee->carries[MELEE_CARRY_REST].z < 0.0f,
+           "in front of the eye rather than behind it, which is the other way "
+           "to be invisible");
+
+    expect(on_point[MELEE_CARRY_MOMENTUM],
+           "momentum keeps the blade on screen");
+    expect(fabsf(point[MELEE_CARRY_MOMENTUM][0]) > 0.35f,
+           "and off to one side, out of the way of a wall run's view");
+    expect(fabsf(point[MELEE_CARRY_MOMENTUM][1]) <
+           fabsf(point[MELEE_CARRY_GUARD][1]),
+           "canted across rather than raised through the middle");
+}
+
+/* ---- 16. which stance, and when ----
+
+   The stance is a function of state the game already keeps, and the weights
+   that carry it there are the one piece of new state on the weapon. What has
+   to be true of them is that they always describe a hold - they sum to one,
+   they settle, and they never pass through a frame describing nothing. */
+static void check_carry_blend(const WeaponSpec* spec) {
+    printf("\n16. the stance follows the player, and the blend always holds\n");
+
+    Weapon weapon;
+    weapon_init(&weapon, spec);
+    PlayerController player;
+    memset(&player, 0, sizeof player);
+    player.ground.is_grounded = 1;
+    WeaponCommand command;
+    memset(&command, 0, sizeof command);
+
+    const float step = 1.0f / 120.0f;
+    ViewmodelPose held;
+
+    /* Sheathed, which is where a sword starts: worn and not held, so there is
+       no stance at all and the renderer takes the other branch. */
+    expect(!weapon_melee_carry(&weapon, &held, NULL),
+           "a sheathed sword is not being carried");
+
+    /* Draw it, and wait for the draw to land. */
+    command.attack_pressed = 1;
+    weapon_update(&weapon, &command, &player, 0, 0, 0, 1.6f, 75.0f, step);
+    command.attack_pressed = 0;
+    for (int i = 0; i < 240; ++i)
+        weapon_update(&weapon, &command, &player, 0, 0, 0, 1.6f, 75.0f, step);
+
+    float weights[MELEE_CARRY_COUNT];
+    expect(weapon_melee_carry(&weapon, &held, weights),
+           "and a drawn one, standing still, is");
+    expect(weights[MELEE_CARRY_GUARD] > 0.9f,
+           "in the guard, which is where a sword just used belongs");
+
+    /* The blend, driven through every stance change there is, checking on
+       every single frame that the three weights still describe a hold. A frame
+       where they sum to something other than one is a frame where the sword is
+       somewhere between two stances and at neither.
+
+       Kept short on purpose. The clock that drops the guard to a low rest is
+       the same one that sheathes the sword, and it has been running since the
+       opening swing landed: three phases of 0.35s leaves the whole blend well
+       inside it, and a stance check run past it would be a check on a sword
+       that had gone to the hip for reasons of its own. */
+    float worst = 0.0f;
+    int negative = 0;
+    for (int phase = 0; phase < 3; ++phase) {
+        player.wall_run.active = (phase == 1);
+        for (int i = 0; i < 42; ++i) {
+            weapon_update(&weapon, &command, &player, 0, 0, 0, 1.6f, 75.0f,
+                          step);
+            expect_quiet(weapon_melee_carry(&weapon, &held, weights),
+                         "the sword stays in hand for the whole blend");
+            float total = 0.0f;
+            for (int c = 0; c < MELEE_CARRY_COUNT; ++c) {
+                total += weights[c];
+                if (weights[c] < -1e-5f) negative = 1;
+            }
+            if (fabsf(total - 1.0f) > worst) worst = fabsf(total - 1.0f);
+        }
+        if (phase == 1)
+            expect(weights[MELEE_CARRY_MOMENTUM] > 0.9f,
+                   "a wall run cants the blade across");
+        if (phase == 2)
+            expect(weights[MELEE_CARRY_GUARD] > 0.9f,
+                   "and coming off it brings the guard back");
+    }
+    check("the weights always sum to one", 1.0f + worst, 1.0f, 1e-4f);
+    expect(!negative, "and none of them is ever negative");
+
+    /* The hands come down before the sword goes away. Both come off
+       melee_quiet_time, which is what stops them being two clocks that could
+       disagree - so what is checked is the order, on the one clock. */
+    int rested = 0, quiet_frames = 0;
+    while (!weapon.sheathed && quiet_frames < 1200) {
+        weapon_update(&weapon, &command, &player, 0, 0, 0, 1.6f, 75.0f, step);
+        ++quiet_frames;
+        if (weapon_melee_carry(&weapon, &held, weights) &&
+            weights[MELEE_CARRY_REST] > 0.9f) rested = 1;
+    }
+    printf("   left alone, the hands were at the hip after %.1fs and the sword "
+           "was away at %.1fs\n",
+           MELEE_AUTO_SHEATHE_SECONDS * MELEE_REST_AFTER,
+           MELEE_AUTO_SHEATHE_SECONDS);
+    expect(rested, "the sword drops to a low rest before it sheathes itself");
+    expect(weapon.sheathed, "and then puts itself away");
+
+    /* And a stance interrupted halfway into another one, which is the case the
+       weights exist for rather than a from/to pair. Half a transition into the
+       momentum carry, the wall run ends.
+
+       What a from/to pair would do here is the whole argument: it has one
+       `from`, and to answer a new target it has to set that `from` to where the
+       sword is nominally coming from - the full momentum carry - which teleports
+       the sword the rest of the way INTO a stance it was already leaving. The
+       distance of that teleport is computable, so the check is against it and
+       not against a number somebody picked. */
+    weapon_init(&weapon, spec);
+    weapon.sheathed = 0;
+    player.wall_run.active = 1;
+    for (int i = 0; i < 8; ++i)
+        weapon_update(&weapon, &command, &player, 0, 0, 0, 1.6f, 75.0f, step);
+    weapon_melee_carry(&weapon, &held, weights);
+    float caught = weights[MELEE_CARRY_MOMENTUM];
+    printf("   caught %.0f%% of the way into the momentum carry\n",
+           caught * 100.0f);
+    expect(caught > 0.05f && caught < 0.95f, "genuinely mid-transition");
+
+    const MeleeSpec* melee = weapon_spec_melee(spec);
+    float span = 0.0f;
+    {
+        const ViewmodelPose* a = &melee->carries[MELEE_CARRY_GUARD];
+        const ViewmodelPose* b = &melee->carries[MELEE_CARRY_MOMENTUM];
+        float d[3] = {b->x - a->x, b->y - a->y, b->z - a->z};
+        span = sqrtf(d[0]*d[0] + d[1]*d[1] + d[2]*d[2]);
+    }
+    float would_snap = (1.0f - caught) * span;
+
+    ViewmodelPose before = held;
+    player.wall_run.active = 0;
+    weapon_update(&weapon, &command, &player, 0, 0, 0, 1.6f, 75.0f, step);
+    weapon_melee_carry(&weapon, &held, weights);
+    float d[3] = {held.x - before.x, held.y - before.y, held.z - before.z};
+    float moved = sqrtf(d[0]*d[0] + d[1]*d[1] + d[2]*d[2]);
+    printf("   the sword moves %.1fmm on the frame the wall run ends; a "
+           "from/to pair would have jumped %.1fmm\n",
+           moved * 1000.0f, would_snap * 1000.0f);
+    expect(moved < would_snap * 0.5f,
+           "an interrupted stance eases on rather than snapping back to a "
+           "`from` it never had");
 }
 
 int main(void) {
@@ -2611,15 +2842,17 @@ int main(void) {
         check_clip_arms(&WEAPON_SPEC_KATANA, &model);
         check_melee_rides_hand(&model);
         check_blade_faces(&model);
-        check_sword_hold(&model);
         ArmRig rig;
         if (check_arms(spec, &model, &rig)) {
             check_reload(spec, &rig);
             check_firing_wrist(spec, &model, &rig);
             check_firing_wrist(&WEAPON_SPEC_AUTO_PISTOL, &model, &rig);
+            check_carries(&WEAPON_SPEC_KATANA, &model, &rig);
             check_sword_neck();
         }
     }
+    check_carry_blend(&WEAPON_SPEC_KATANA);
+
     check_gait(spec);
     check_sprint_while_firing(spec);
     check_dropped_mag(spec);

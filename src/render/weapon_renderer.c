@@ -973,21 +973,29 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
        fist reaching for where it used to be. The lean was exactly that for as
        long as it was a glRotatef on the gun alone - the arms reached identity
        through a glLoadIdentity a few lines later and never leaned at all. */
-    if (arms && arms_rig != CHARACTER_RIG_NONE &&
-        weapon_spec_melee(weapon->spec)) {
-        /* Every frame of a sword: the hold, a swing, a draw and a sheathe are
-           all one clip sampled through the eye, with the same clip and frame the
-           base pose above came from. The sword has already been drawn at that
-           pose, so the hand arrives around it rather than beside it.
+    float carry_weights[MELEE_CARRY_COUNT];
+    int carried = weapon_melee_carry(weapon, NULL, carry_weights);
+    if (arms && arms_rig != CHARACTER_RIG_NONE && carried) {
+        /* A stance: the sword is where the spec says and the hands are solved
+           onto its hilt, which is a rifle's arrangement applied to a sword. The
+           same matrix the sword was drawn through, so the fists close on the
+           tsuka the player is actually looking at. */
+        viewmodel_arms_draw_carry(arms, arms_rig, weapon->spec, gun_matrix,
+                                  carry_weights);
+    } else if (arms && arms_rig != CHARACTER_RIG_NONE &&
+               weapon_spec_melee(weapon->spec)) {
+        /* A swing, a draw or a sheathe: the animated arms, with the same clip
+           and frame the base pose above came from. The sword has already been
+           drawn at that pose, so the hand arrives around it rather than beside
+           it.
 
-           There used to be a second path here - a solved carry, the sword placed
-           at an authored stance with both fists driven onto its hilt by the same
-           IK a rifle's grips use - and the switch between them was a seam
-           nothing could blend, because the two anchor differently: a clip is
-           carried onto the eye it was sampled at and a solve hangs off a
-           searched shoulder placement. The seam is gone because the solve is.
-           What the player holds in first person is the pose the animator drew,
-           which is the same pose anyone watching them sees. */
+           The seam between this and the branch above is a switch and not a
+           blend, and knowingly: the two paths do not merely pose the arms
+           differently, they anchor them differently - a clip is carried onto
+           the eye it was sampled at and a solve is hung off a searched
+           shoulder placement - so there is no one pose to interpolate. What
+           closes the gap is that a recovery ends near the guard, which is a
+           thing to look at rather than to reason about. */
         Pose swing;
         ViewmodelPose unused;
         const MeleeSpec* held = weapon_spec_melee(weapon->spec);
