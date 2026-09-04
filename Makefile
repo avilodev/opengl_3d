@@ -74,6 +74,8 @@ HEADLESS_CORE := \
     src/gameplay/traversal.c \
     src/gameplay/viewmodel_pose.c \
     src/gameplay/weapon.c \
+    src/gameplay/weapon_firearm.c \
+    src/gameplay/weapon_melee.c \
     src/gameplay/weapon_registry.c \
     src/gameplay/weapon_spec.c \
     src/gameplay/weapon_specs.c \
