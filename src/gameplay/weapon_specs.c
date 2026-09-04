@@ -57,6 +57,10 @@ const WeaponSpec WEAPON_SPEC_AUTO_PISTOL = {
     .view_forward = 0.46f,
     .view_fov = 55.0f,
 
+    /* The rifle's, and for the rifle's reasons - a sidearm is carried in the
+       same hands off the same shoulders. See the assault rifle's entry. */
+    .neck_follow = 0.30f,
+
     /* A pistol has nothing forward to hold, so both hands meet at the grip and
        the support hand wraps the firing one. Taken off the boxes the sidearm is
        still drawn from: the grip block sits at z +0.01 spanning y -0.115 to
@@ -168,6 +172,19 @@ const WeaponSpec WEAPON_SPEC_ASSAULT_RIFLE = {
     .view_down = 0.125f,
     .view_forward = 0.38f,
     .view_fov = 43.0f,
+
+    /* How much of the head's pitch the gun gives up to the neck - see
+       render/viewmodel_neck.h, and weapon_spec.h for why this is a scalar.
+
+       A third, which is the number this whole field exists to make arguable.
+       At 1.0 the rifle is a rifle held by a body, and it is also a rifle that
+       leaves the frame every time the player looks up a wall to grapple it,
+       which in this game is constantly. At 0.0 it is exactly what shipped
+       before the neck existed. A third keeps most of what the motion buys -
+       the hands rising into frame on a look down, the barrel dipping on a look
+       up - while a look at the sky still leaves a gun on screen. The aim fades
+       it out entirely, so nothing here reaches the sights. */
+    .neck_follow = 0.30f,
 
     /* Measured off the mesh. The pistol grip hangs behind the magwell around
        z +0.03 and reaches down to y -0.153, so the middle of it - which is what
@@ -300,18 +317,64 @@ static const MeleeSpec KATANA_MELEE = {
     .attack_count = 5,
     .light_attack = 0, .heavy_attack = 3, .block_attack = 4,
 
-    /* Forward and a little up. These clips were staged for a camera behind
-       the body, where a wind-up that takes the hand back past the shoulder is
-       just a wind-up; on a camera sitting at the shoulder line the same frames
-       put the hand behind the eye, where it draws perfectly happily and is
-       never seen.
+    /* Nothing, and that is the answer rather than an unfinished tuning pass.
 
-       Sized against the widest of the five. Sword_Heavy_Combo sets both
-       numbers: it reaches z +0.34 at its midpoint and drops to y -1.01 on the
-       follow-through, and this is what brings both back inside the frame with
-       a little to spare. Applied to the ARMS as well as the sword - a shift
-       given to one and not the other is how a hilt ends up floating in front
-       of a fist reaching for where it used to be. */
+       This used to be forward 0.40 and up 0.22, sized to drag a wind-up that
+       goes behind the shoulder back into frame. It bought that by putting the
+       shoulder line 40cm in FRONT of the camera, which is not a place a
+       shoulder can be: the upper arms came out ahead of the eye and the
+       forearms lay across the near plane, and what filled the screen was not a
+       badly placed arm but a solid wall of one. The anchor is the eye now -
+       see viewmodel_clip_arms_eye - and the rig's own neck and clavicles put
+       the shoulders where they belong without being told.
+
+       So what is left for this field is a genuine per-weapon nudge, and the
+       katana wants none. A wind-up that carries the hand behind the eye is
+       allowed to: that is where a wind-up goes, and hiding it by shoving the
+       body forward hid the arms as well. Applied to the ARMS as well as the
+       sword - a shift given to one and not the other is how a hilt ends up
+       floating in front of a fist reaching for where it used to be. */
+    .carries = {
+        /* Camera space: +x right, +y up, -z forward, rotations applied about
+           the sword's own origin as yaw, then pitch, then roll. The origin is
+           the middle of the tsuka, so these place the HANDS and the blade
+           follows out of them - a positive pitch raises the tip, because the
+           mesh runs -z toward it.
+
+           [MELEE_CARRY_REST] Down at the side, tip angled at the floor. Off
+           the bottom of the frame at 0.58 below the eye against a 43 degree
+           projection, and off it because that is where a hand at a hip is:
+           VIEWMODEL_HIP_BELOW_EYE puts a belt 0.75 down, and this is a hand
+           resting a little above one. Nothing here is aiming at invisible. */
+        [MELEE_CARRY_REST] = {
+            0.17f, -0.58f, -0.26f,
+            -28.0f, 4.0f, 0.0f,
+            0.0f, 0.0f,
+        },
+        /* [MELEE_CARRY_GUARD] The one the player sees. Hands low and forward,
+           at about the height the rifle's receiver sits, and the blade rising
+           left across the frame - the tip lands a fifth of the way left of
+           centre and three quarters of the way up, which is a blade that
+           reads as a blade rather than as a bar down the middle of the
+           screen. */
+        [MELEE_CARRY_GUARD] = {
+            0.09f, -0.16f, -0.42f,
+            34.0f, 18.0f, 8.0f,
+            0.0f, 0.0f,
+        },
+        /* [MELEE_CARRY_MOMENTUM] Canted across and out of the way. A wall run
+           already banks the view sixteen degrees and a slide is a low fast
+           read of the floor; a blade held up through the middle of either is a
+           blade across the thing the player is trying to see. So the tip goes
+           left and level and the hands stay right, which keeps the sword on
+           screen without it being in the way. */
+        [MELEE_CARRY_MOMENTUM] = {
+            0.14f, -0.26f, -0.36f,
+            10.0f, 46.0f, -22.0f,
+            0.0f, 0.0f,
+        },
+    },
+
     .draw_track = &KATANA_DRAW,
     .sheathe_track = &KATANA_SHEATHE,
     /* Fast enough to be a commitment rather than a cutscene, slow enough that
@@ -320,7 +383,7 @@ static const MeleeSpec KATANA_MELEE = {
     .draw_time = 0.70f,
     .sheathe_time = 0.85f,
 
-    .view_clip_offset = { 0.0f, 0.22f, -0.40f },
+    .view_clip_offset = { 0.0f, 0.0f, 0.0f },
 };
 
 const WeaponSpec WEAPON_SPEC_KATANA = {
@@ -342,9 +405,42 @@ const WeaponSpec WEAPON_SPEC_KATANA = {
     .view_forward = 0.38f,
     .view_fov = 43.0f,
 
-    .hold = WEAPON_HOLD_TWO_POINT,
-    .grip_right = {0.0f, -0.090f, 0.030f},
-    .grip_left = {0.0f, -0.060f, -0.330f},
+    /* Free, where the rifle's is a third.
+
+       This was the rifle's number, held as a placeholder by a comment that laid
+       out the argument for a larger one and then declined to make it: the honest
+       amount "cannot be chosen until it has a carry worth looking at". There is
+       one now - three solved stances on the hilt this spec names, in a fist the
+       third-person body closes on the same point.
+
+       What holds a GUN's neck down is the sight. A gun that follows its body too
+       far takes the optic off the crosshair on the way up, and the aim fade
+       exists to rescue exactly that at the one moment it matters. A sword is
+       owed no such compromise, so what is left is only whether the blade stays
+       on screen - and it does not, at a look up, and should not. The hands are
+       at a guard in front of a chest, and a chest does not follow an eye to the
+       ceiling. Looking up takes the sword out of frame and looking down brings
+       it back, which is the motion of carrying one rather than of aiming it.
+
+       Scales the turn as well as the nod. The yaw has its own, much shorter
+       saturation - see VIEWMODEL_NECK_YAW_LIMIT - so a free neck here is a head
+       that pitches off its body as far as it likes and leads a turn only by as
+       much as the body needs to catch up. */
+    .neck_follow = 1.0f,
+
+    /* Two fists in a row along the tsuka, which is its own hold: neither hand
+       has a pistol grip to close on and both do the same job.
+
+       Measured off the mesh rather than copied off the rifle, which is what
+       these used to be. The origin is the middle of the tsuka and the guard is
+       at z -0.1131, so the grip runs from there back to about +0.113 and the
+       two fists sit either side of the middle, a fist's width apart: the right
+       hand forward under the tsuba, the left at the kashira. On the hilt's own
+       axis and not below it - a sword has nothing hanging under its grip for a
+       hand to drop onto, which is the whole difference from a pistol grip. */
+    .hold = WEAPON_HOLD_HILT,
+    .grip_right = {0.0f, 0.0f, -0.062f},
+    .grip_left = {0.0f, 0.0f, 0.062f},
     /* One pose, named three times. A sword has no aim pitch to blend along, so
        the trio collapses rather than the blend growing a special case. */
     .clips = {{ "Sword_Idle", "Sword_Idle", "Sword_Idle" }},

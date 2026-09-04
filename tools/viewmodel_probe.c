@@ -2479,6 +2479,69 @@ static void check_neck(const WeaponSpec* spec, const SkinnedModel* model) {
     expect(agree, "the drawn matrix and the transformed point are one rotation");
 }
 
+/* ---- the sword's neck ----
+
+   What a katana's neck is worth, printed where the number is taste and checked
+   where it is not.
+
+   The rifle's 0.30 was on this weapon as a placeholder and its own comment said
+   so: the argument for more was written down and left waiting on "a carry worth
+   looking at". There is one. What holds a GUN's neck down is the sight - a gun
+   that follows its body too far takes the optic off the crosshair on the way up,
+   which is what the aim fade exists to rescue at the one moment it matters. A
+   sword has no sights, so nothing is owed that compromise, and what is left is
+   only whether the blade stays on screen. It does not, at a look up, and should
+   not: the hands are at a guard in front of a chest, and a chest does not follow
+   an eye to the ceiling. */
+static void check_sword_neck(void) {
+    const WeaponSpec* katana = &WEAPON_SPEC_KATANA;
+    const WeaponSpec* rifle = &WEAPON_SPEC_ASSAULT_RIFLE;
+    printf("\na sword's neck is free where a gun's is a third\n");
+    expect(katana->neck_follow > rifle->neck_follow,
+           "the sword follows its body further than the rifle does");
+
+    /* The guard, through the neck, across pitch and glance. The point is not any
+       one of these figures - it is that they MOVE, and by how much, which is the
+       whole difference between a carried sword and one taped to the lens. */
+    const float guard[3] = {0.09f, -0.16f, -0.42f};
+    const float pitches[3] = {0.0f, 35.0f, 70.0f};
+    const float glances[2] = {0.0f, 40.0f};
+    for (int g = 0; g < 2; ++g) {
+        viewmodel_neck_set_look_yaw(glances[g]);
+        for (int i = 0; i < 3; ++i) {
+            ViewmodelNeck neck;
+            viewmodel_neck_build(&neck, katana, pitches[i], 0.0f, 0.0f);
+            float at[3];
+            viewmodel_neck_transform_point(&neck, guard, at);
+            printf("   guard at pitch %2.0f, glance %2.0f: "
+                   "(%+.3f, %+.3f, %+.3f)\n",
+                   pitches[i], glances[g], at[0], at[1], at[2]);
+        }
+    }
+    viewmodel_neck_set_look_yaw(0.0f);
+
+    /* Level and square is the one pose the neck must not touch: it is where
+       every carry was authored, and a body that has neither pitched nor turned
+       has nothing to have been left behind by. */
+    ViewmodelNeck square;
+    viewmodel_neck_build(&square, katana, 0.0f, 0.0f, 0.0f);
+    float at[3];
+    viewmodel_neck_transform_point(&square, guard, at);
+    check("level and square, the guard is where it was authored",
+          fabsf(at[0] - guard[0]) + fabsf(at[1] - guard[1]) +
+          fabsf(at[2] - guard[2]), 0.0f, 1e-5f);
+
+    /* And a look up takes it off the top of the frame, which is the cost being
+       bought rather than a defect. The projection is the katana's own. */
+    viewmodel_neck_set_look_yaw(0.0f);
+    ViewmodelNeck up;
+    viewmodel_neck_build(&up, katana, 70.0f, 0.0f, 0.0f);
+    float raised[3];
+    viewmodel_neck_transform_point(&up, guard, raised);
+    expect(raised[1] < guard[1] - 0.15f,
+           "a look at the sky drops the guard out of the bottom of the frame");
+}
+
 /* ---- 15. the sword's carries ----
 
    A katana is a weapon with both halves now: swings are clips, and holds are
@@ -2785,6 +2848,7 @@ int main(void) {
             check_firing_wrist(spec, &model, &rig);
             check_firing_wrist(&WEAPON_SPEC_AUTO_PISTOL, &model, &rig);
             check_carries(&WEAPON_SPEC_KATANA, &model, &rig);
+            check_sword_neck();
         }
     }
     check_carry_blend(&WEAPON_SPEC_KATANA);
