@@ -45,6 +45,7 @@ PROBE_SRCS := tools/viewmodel_probe.c src/render/arm_placement.c \
 # when a clip changes is a subtraction. Neither is something to settle by eye.
 BODY_PROBE := bin/body_probe
 BODY_PROBE_SRCS := tools/body_probe.c src/render/character_animation.c \
+              src/gameplay/weapon_registry.c \
               src/render/character_transform.c src/render/weapon_grip.c \
               src/render/arm_placement.c \
               src/gameplay/weapon_specs.c src/gameplay/weapon_spec.c \

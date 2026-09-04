@@ -30,6 +30,16 @@ typedef enum {
        nobody can feel. It goes when the session layer arrives with something
        that shoots back. */
     ACTION_DEBUG_DAMAGE,
+    /* Arms the next weapon in the registry. A development control and labelled
+       one, for the same reason the line above is: one weapon is chosen at spawn
+       and there is no switching in the game this is a game of. What it buys is
+       that testing the fourth weapon is a keypress rather than a rebuild - the
+       loop it replaces was edit weapon_specs.c, rebuild, restart, and walk back
+       to whatever you were looking at.
+
+       It goes when weapon switching becomes a thing the player does, at which
+       point what replaces it is a binding rather than a debug one. */
+    ACTION_DEBUG_NEXT_WEAPON,
     ACTION_COUNT
 } Action;
 

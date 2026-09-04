@@ -5,6 +5,8 @@
 #include "gameplay/combatant.h"
 #include "gameplay/arena.h"
 #include "gameplay/player_combatant.h"
+#include "gameplay/player_loadout.h"
+#include "gameplay/weapon_registry.h"
 #include "gameplay/player_controller.h"
 #include "gameplay/weapon_tuning.h"
 #include "gameplay/player_visual_state.h"
@@ -149,7 +151,22 @@ int main(void) {
     CombatantSet combatants;
     CombatantBodies combatant_bodies = {0};
     combatant_set_init(&combatants);
-    combatant_bodies_init(&combatant_bodies, &combatants, player_rig);
+    combatant_bodies_init(&combatant_bodies, &combatants, player_rig,
+                          &WEAPON_SPEC_ASSAULT_RIFLE);
+    /* Every other mannequin carries the katana instead.
+
+       These bodies are calibration figures - they stand on representative
+       routes and heights so the rig can be read at a distance - and until now
+       every one of them held the issued rifle, because combatant_renderer.c
+       said so in its own body. The third-person sword hold was therefore
+       something only a probe had ever seen. Alternating them puts both holds
+       on screen at once, at a range where the difference between them is the
+       thing being calibrated.
+
+       One line, and the day combatants get loadouts of their own it is the
+       line that goes. */
+    for (int i = 1; i < combatant_bodies.count; i += 2)
+        combatant_bodies_set_weapon(&combatant_bodies, i, &WEAPON_SPEC_KATANA);
 
     input_init(&input);
     actions_load_bindings("data/keybinds.cfg");
@@ -171,10 +188,14 @@ int main(void) {
     /* The player's own body: the same struct as everything else in the world
        that a round can land on, filled from the controller each step. */
     player_combatant_init(&player_body, &player);
-    pause_menu_init(&pause_menu);
+    /* Which class the player is in, as an index into the loadout table. The
+       first row is what they start in, and the pause menu is the only thing
+       that moves it - there is no class selection before a round yet. */
+    int current_class = 0;
+    pause_menu_init(&pause_menu, current_class);
     /* The auto pistol (WEAPON_SPEC_AUTO_PISTOL) is still here and still
        works; the player is simply not carrying it yet. */
-    weapon_init(&weapon, &WEAPON_SPEC_KATANA);
+    weapon_init(&weapon, player_loadout_get(current_class)->weapon);
     /* The body in third person holds what the hands in first person hold. One
        assignment, off the weapon rather than off a second name for it, so the
        two views cannot end up carrying different guns. */
@@ -238,6 +259,13 @@ int main(void) {
     /* Latched like every other press, and for the same reason: a frame that
        runs no simulation step would otherwise drop it. */
     int pending_debug_damage = 0;
+    int pending_next_weapon = 0;
+    /* Which swing the body is already playing, so a clip is looked up when it
+       changes and not every frame. Out here rather than beside the code that
+       reads them because swapping the weapon has to be able to forget them:
+       values no reachable attack can equal, meaning nothing has been played. */
+    int played_attack = -2;
+    int played_recovery = -1;
     while (!glfwWindowShouldClose(window)) {
         double current_time = glfwGetTime();
         float delta_time = (float)(current_time - previous_time);
@@ -272,12 +300,33 @@ int main(void) {
                 /* Resume was clicked with the same button that fires. */
                 weapon_latch_trigger(&weapon);
             }
+            /* A class change is the same act as coming back from a death: the
+               weapon is built again from its spec and handed the world's bodies
+               again, because weapon_init drops the targets with everything
+               else. The body is told what the hands are now holding in the same
+               breath, so the two views cannot end up carrying different
+               weapons for even a frame. */
+            if (pause_menu.class_change_requested) {
+                pause_menu.class_change_requested = 0;
+                current_class = pause_menu.selected_class;
+                weapon_init(&weapon, player_loadout_get(current_class)->weapon);
+                weapon_set_targets(&weapon, &combatants);
+                body.weapon = weapon.spec;
+                body.sheathed = weapon.sheathed;
+                /* The clip the body was playing belonged to the old weapon.
+                   Forgetting it means the next swing is a change and gets
+                   played, rather than matching a stale number and being
+                   skipped. */
+                played_attack = -2;
+                played_recovery = -1;
+            }
             if (pause_menu.quit_requested)
                 glfwSetWindowShouldClose(window, GLFW_TRUE);
             /* Nothing pressed before the menu opened should fire on resume. */
             pending_jump = pending_crouch = pending_grapple = pending_reload = 0;
             pending_lean_left = pending_lean_right = 0;
             pending_debug_damage = 0;
+            pending_next_weapon = 0;
         } else {
             /* The simulation runs on a fixed step and the frame feeds it time.
                Movement is full of per-step decisions - a clamped air-strafe
@@ -301,6 +350,8 @@ int main(void) {
                PlayerCommand would be teaching gameplay a key exists. */
             pending_debug_damage |= action_pressed(&actions,
                                                    ACTION_DEBUG_DAMAGE);
+            pending_next_weapon |= action_pressed(&actions,
+                                                  ACTION_DEBUG_NEXT_WEAPON);
 
             /* Aiming is not simulation. A mouse delta is an amount the frame
                already measured, and deferring it to the next step that happens
@@ -461,6 +512,29 @@ int main(void) {
             }
         }
 
+        /* The next weapon in the registry, if the development key was pressed.
+
+           Outside the fixed step, because arming a weapon is not simulation and
+           a frame that runs two steps would otherwise skip one. weapon_init
+           drops the targets along with everything else, so they are published
+           again straight after - the same pair of calls that armed the weapon
+           at startup and that a respawn makes. */
+        if (pending_next_weapon) {
+            pending_next_weapon = 0;
+            int next = weapon_registry_index_of(weapon.spec) + 1;
+            if (next >= weapon_registry_count()) next = 0;
+            weapon_init(&weapon, weapon_registry_get(next));
+            weapon_set_targets(&weapon, &combatants);
+            /* The body on screen holds what the player holds - the same four
+               lines a class change makes, and for the same reasons. In third
+               person this is the whole point of the key: the hold, the carry
+               and the clip set are what is being looked at. */
+            body.weapon = weapon.spec;
+            body.sheathed = weapon.sheathed;
+            played_attack = -2;
+            played_recovery = -1;
+        }
+
         /* Once a frame, off the controller the simulation just stepped. The
            edges - jumped, landed, started sliding - are the difference against
            last frame's state, which is why the same struct is passed in as
@@ -479,8 +553,6 @@ int main(void) {
            about. The clip is looked up each time it changes and not each
            frame, which is what the comparison against the last one is for. */
         {
-            static int played_attack = -2;
-            static int played_recovery = -1;
             const SkinnedModel* rig = character_library_model(&characters,
                                                               body.rig);
             const MeleeSpec* body_melee = weapon_spec_melee(weapon.spec);

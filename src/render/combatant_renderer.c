@@ -17,19 +17,21 @@
 #define COMBATANT_SKIN_BEHIND (-0.35f)
 
 void combatant_bodies_init(CombatantBodies* bodies, const CombatantSet* set,
-                           int rig) {
+                           int rig, const WeaponSpec* weapon) {
     if (!bodies || !set) return;
     bodies->count = set->count > COMBATANT_MAX ? COMBATANT_MAX : set->count;
     for (int i = 0; i < bodies->count; ++i) {
         character_instance_init(&bodies->instances[i], rig);
-        /* Everyone in the arena carries the issued rifle. Stated here rather
-           than assumed by the renderer, which is the whole point of the field:
-           the day a combatant carries something else it is this line that
-           changes, and nothing downstream learns anything new. */
-        bodies->instances[i].weapon = &WEAPON_SPEC_ASSAULT_RIFLE;
+        bodies->instances[i].weapon = weapon;
         combatant_visual_state_fill(&bodies->states[i], &set->items[i]);
         bodies->drawable[i] = 0;
     }
+}
+
+void combatant_bodies_set_weapon(CombatantBodies* bodies, int index,
+                                 const WeaponSpec* weapon) {
+    if (!bodies || index < 0 || index >= bodies->count) return;
+    bodies->instances[index].weapon = weapon;
 }
 
 /* Whether this body is worth the eight thousand vertex transforms. */

@@ -35,7 +35,8 @@ static const ActionEntry ACTIONS[ACTION_COUNT] = {
     {"front_view", ACTION_FRONT_VIEW, KEY_BIND(B), KEY_BIND(UNKNOWN)},
     {"pause", ACTION_PAUSE, KEY_BIND(ESCAPE), KEY_BIND(UNKNOWN)},
     {"resume", ACTION_RESUME, KEY_BIND(ENTER), KEY_BIND(UNKNOWN)},
-    {"debug_damage", ACTION_DEBUG_DAMAGE, KEY_BIND(K), KEY_BIND(UNKNOWN)}
+    {"debug_damage", ACTION_DEBUG_DAMAGE, KEY_BIND(K), KEY_BIND(UNKNOWN)},
+    {"debug_next_weapon", ACTION_DEBUG_NEXT_WEAPON, KEY_BIND(J), KEY_BIND(UNKNOWN)}
 };
 
 static Binding bindings[ACTION_COUNT][2];

@@ -35,10 +35,33 @@ typedef struct {
 } CombatantBodies;
 
 /* Sets up one body per combatant in the set, all wearing `rig` - an index from
-   character_library_add. Allocation-free: the instances fill themselves in on
-   their first update, once there is a loaded model to size them against. */
+   character_library_add - and all carrying `weapon`. Allocation-free: the
+   instances fill themselves in on their first update, once there is a loaded
+   model to size them against.
+
+   The weapon is a parameter rather than a constant in the body of this file,
+   which is where it used to be: every combatant carried WEAPON_SPEC_ASSAULT_
+   RIFLE because combatant_renderer.c said so, so a world of swordsmen would
+   have been a world of swordsmen holding rifles. What a body carries is the
+   caller's business - it is the same class of decision as which rig they wear,
+   and it is made in the same place. A NULL arms them with nothing and draws
+   the box fallback.
+
+   For a body that carries something OTHER than what everyone else does, see
+   combatant_bodies_set_weapon. */
 void combatant_bodies_init(CombatantBodies* bodies, const CombatantSet* set,
-                           int rig);
+                           int rig, const WeaponSpec* weapon);
+
+/* What one body carries, after the fact.
+
+   The pieces that make a mixed arena work were all in place - the third person
+   draws the body's OWN weapon and resolves its clip set against whatever rig it
+   is wearing - and nothing called them with two different answers. This is the
+   call that does. An index outside the set is ignored rather than a crash: the
+   callers are a spawn table and a debug key, and neither has anything useful to
+   do with a failure. */
+void combatant_bodies_set_weapon(CombatantBodies* bodies, int index,
+                                 const WeaponSpec* weapon);
 
 /* Refills each payload from its combatant and advances its animation. Once a
    frame, before drawing, and for the same reason the player's body is updated

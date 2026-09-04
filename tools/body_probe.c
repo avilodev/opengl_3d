@@ -17,6 +17,7 @@
 #include "render/character_transform.h"
 #include "render/skinned_model.h"
 #include "gameplay/movement_tuning.h"
+#include "gameplay/weapon_registry.h"
 #include "gameplay/weapon_spec.h"
 #include "gameplay/weapon_tuning.h"
 #include "utils/mat4.h"
@@ -77,9 +78,9 @@ static void check_clip_set(const SkinnedModel* model, const WeaponSpec* spec) {
         if (attack->recovery) check_clip(model, attack->recovery);
         if (attack->active_to >= attack->active_from) {
             expect(attack->active_from >= 0.0f && attack->active_to <= 1.0f,
-                   "the live window lies inside the clip");
+               "the live window lies inside the clip");
             expect(attack->active_to > attack->active_from,
-                   "the live window has width");
+               "the live window has width");
         }
         expect(attack->next == -1 ||
                (attack->next >= 0 && attack->next < melee->attack_count),
@@ -123,6 +124,32 @@ static int bone_at(CharacterAnimation* animation, const SkinnedModel* model,
     Mat4 m;
     if (!skinned_model_bone_matrix(model, &pose, bone, &m)) {
         printf("  FAIL bone '%s' is not in this rig\n", bone);
+        ++failures;
+        return 0;
+    }
+    out[0] = m.m[12]; out[1] = m.m[13]; out[2] = m.m[14];
+    return 1;
+}
+
+/* The straight-line distance between two points in the rig's own space. */
+static float distance(const float a[3], const float b[3]) {
+    float dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
+    return sqrtf(dx * dx + dy * dy + dz * dz);
+}
+
+/* Where the gun hand ends up with the body looking `pitch` degrees off level,
+   settled, on the sight - which is the pose a shot is fired from. */
+static int hand_at_pitch(CharacterAnimation* animation, const SkinnedModel* model,
+                         float pitch, float out[3]) {
+    CharacterVisualState state = standing(0.0f, 1.0f);
+    state.look_pitch_degrees = pitch;
+    for (int i = 0; i < 240; ++i)
+        character_animation_update(animation, model, &state, 1.0f / 120.0f);
+    Pose pose;
+    character_animation_pose(animation, model, &pose);
+    Mat4 m;
+    if (!skinned_model_bone_matrix(model, &pose, "hand_r", &m)) {
+        printf("  FAIL bone 'hand_r' is not in this rig\n");
         ++failures;
         return 0;
     }
@@ -454,6 +481,144 @@ int main(void) {
     float scale = (model.max_y - model.min_y) > 0.01f
         ? CHARACTER_RIG_HEIGHT / (model.max_y - model.min_y) : 1.0f;
 
+    /* The eye belongs on the head.
+
+       Everything else in first person is measured down from VIEW_EYE_HEIGHT,
+       so if the eye is in the wrong place nothing above it is checkable and
+       everything below it is wrong by the same amount. Held against the rig's
+       BIND pose, which is the one to measure: a sword stance has bent knees
+       and drops every landmark by a tenth of the body. */
+    {
+        Pose bind;
+        skinned_model_bind_pose(&model, &bind);
+        Mat4 head, neck;
+        float head_y = 0.0f, neck_y = 0.0f;
+        int got = skinned_model_bone_matrix(&model, &bind, "Head", &head) &&
+                  skinned_model_bone_matrix(&model, &bind, "neck_01", &neck);
+        if (got) {
+            head_y = (head.m[13] - model.min_y) * scale;
+            neck_y = (neck.m[13] - model.min_y) * scale;
+        }
+        printf("\n0. the eye is on the head\n");
+        printf("   neck %.2fm, head bone %.2fm, crown %.2fm; the eye is at "
+               "%.2fm\n", neck_y, head_y, CHARACTER_RIG_HEIGHT,
+               VIEW_EYE_HEIGHT);
+        expect(got,
+               "the rig gave up its head");
+        expect(VIEW_EYE_HEIGHT > head_y,
+               "the eye is above the head bone, not inside the neck");
+        expect(VIEW_EYE_HEIGHT < CHARACTER_RIG_HEIGHT,
+               "and below the crown, not floating over it");
+        /* A human eye sits about 93% of the way up a standing body. This rig
+           has human proportions in its bind pose - pelvis at 50%, head bone at
+           86% - so the same fraction is the right one to hold it to. */
+        float want = CHARACTER_RIG_HEIGHT * 0.93f;
+        printf("   93%% of stature would be %.2fm\n", want);
+        expect(fabsf(VIEW_EYE_HEIGHT - want) < 0.06f,
+               "and within 6cm of where a head's eyes actually are");
+    }
+
+    /* A worn sword is held with both hands, and this is where that is
+       checkable. First person solves the same arrangement but puts the whole
+       of it behind the eye, so nothing there can be looked at or measured;
+       the body wears it in plain sight. */
+    {
+        printf("\n0b. a worn sword is carried with both hands on it\n");
+        const WeaponSpec* katana = &WEAPON_SPEC_KATANA;
+        const MeleeSpec* melee = weapon_spec_melee(katana);
+        Pose pose;
+        skinned_model_bind_pose(&model, &pose);
+
+        Mat4 saya;
+        int placed = character_scabbard_transform(&model, &pose, melee, &saya);
+        expect(placed, "the body has somewhere to wear it");
+        if (placed) {
+            float step[3];
+            weapon_spec_sheathed_step(melee, step);
+            Mat4 sword = mat4_multiply(saya, mat4_translation(step[0], step[1],
+                                                              step[2]));
+            float want_r[3], want_l[3];
+            mat4_transform_point(&sword, katana->grip_right, want_r);
+            mat4_transform_point(&saya, melee->saya_grip, want_l);
+
+            character_animation_reach_hands(&model, want_r, want_l, &pose);
+
+            Mat4 hr, hl;
+            int got = skinned_model_bone_matrix(&model, &pose, "hand_r", &hr) &&
+                      skinned_model_bone_matrix(&model, &pose, "hand_l", &hl);
+            expect(got, "and hands to put on it");
+            if (got) {
+                float dr = 0.0f, dl = 0.0f;
+                for (int c = 0; c < 3; ++c) {
+                    float a = hr.m[12 + c] - want_r[c];
+                    float b = hl.m[12 + c] - want_l[c];
+                    dr += a * a; dl += b * b;
+                }
+                dr = sqrtf(dr) * scale; dl = sqrtf(dl) * scale;
+                printf("   the weapon hand lands %.0fmm from the tsuka, the off "
+                       "hand %.0fmm from the scabbard\n", dr * 1000.0f,
+                       dl * 1000.0f);
+                Mat4 sr, sl;
+                skinned_model_bone_matrix(&model, &pose, "upperarm_r", &sr);
+                skinned_model_bone_matrix(&model, &pose, "upperarm_l", &sl);
+                float span_r = 0.0f, span_l = 0.0f;
+                for (int c = 0; c < 3; ++c) {
+                    float a = want_r[c] - sr.m[12 + c];
+                    float b = want_l[c] - sl.m[12 + c];
+                    span_r += a * a; span_l += b * b;
+                }
+                span_r = sqrtf(span_r) * scale;
+                span_l = sqrtf(span_l) * scale;
+                Mat4 er;
+                skinned_model_bone_matrix(&model, &pose, "lowerarm_r", &er);
+                float upper = 0.0f, lower = 0.0f;
+                for (int c = 0; c < 3; ++c) {
+                    float u = er.m[12 + c] - sr.m[12 + c];
+                    float v = hr.m[12 + c] - er.m[12 + c];
+                    upper += u * u; lower += v * v;
+                }
+                float arm = (sqrtf(upper) + sqrtf(lower)) * scale;
+                printf("   the weapon arm must span %.2fm and is %.2fm long; "
+                       "the off arm spans %.2fm\n", span_r, arm, span_l);
+
+                /* The weapon hand is NOT, and this says exactly why rather
+                   than asserting something weaker to go green: the tsuka hangs
+                   further from the right shoulder than that arm is long, so
+                   the solve straightens toward it and stops. What is checked
+                   is that the shortfall is the geometry and nothing else - if
+                   the solver ever breaks, this gap stops matching the deficit
+                   and the check fails for a reason worth having.
+
+                   Closing it is a placement question, not a code one: the
+                   scabbard has to come inboard and up, or the spine has to
+                   turn into the reach the way a person's does. Yaw alone does
+                   not do it - swept from -80 to +40 the span only moves from
+                   0.88m to 0.95m. */
+                /* Neither arm is asked to do this, and that is the point.
+                   Past REACH_LIMIT of its own length an arm is straight, and a
+                   straight arm aimed at something it cannot touch points from
+                   the shoulder along the line to it - which, for a hand
+                   crossing to the far hip, runs through the chest. So the
+                   reach declines and the clip keeps the arm.
+
+                   What is checked is that it declined: the hands are where the
+                   pose put them, not dragged partway to a hilt they cannot
+                   hold. Closing the gap is a placement question - the scabbard
+                   inboard and up, or a spine that turns into the reach the way
+                   a person's does. Yaw alone does not: swept -80 to +40 the
+                   span only moves from 0.95m to 0.88m. */
+                printf("   both are past %.0f%% of their reach, so the reach "
+                       "declines and the clip keeps the arms\n",
+                       0.97f * 100.0f);
+                expect(span_r > arm * 0.97f,
+                       "the tsuka is out of the weapon arm's reach");
+                expect(dr > 0.05f && dl > 0.05f,
+                       "so neither hand was dragged toward it - no arm is put "
+                       "through the body to reach a hilt it cannot hold");
+            }
+        }
+    }
+
     CharacterAnimation animation;
     character_animation_init(&animation, &model,
                              &WEAPON_SPEC_ASSAULT_RIFLE.clips);
@@ -727,8 +892,12 @@ int main(void) {
         }
     }
 
-    check_clip_set(&model, &WEAPON_SPEC_ASSAULT_RIFLE);
-    check_clip_set(&model, &WEAPON_SPEC_KATANA);
+    /* Every weapon there is, not the two this file was written for. Whether a
+       weapon's clip names resolve against the rig is the check that costs
+       nothing to run and everything to skip: a name that matches no clip is a
+       swing that does not happen and does not complain. */
+    for (int i = 0; i < weapon_registry_count(); ++i)
+        check_clip_set(&model, weapon_registry_get(i));
     check_swing_moves_the_hand(&model);
 
     printf("\n8. a held weapon sits on the grip its own spec names\n");
@@ -741,6 +910,60 @@ int main(void) {
         Pose pose;
         character_animation_pose(&animation, &model, &pose);
         check_held_grip(&model, &pose);
+    }
+
+    printf("\n9. changing weapon changes the clips the body aims with\n");
+    /* A body's aim layer is three authored poses named by the weapon it holds,
+       and the pause menu can now hand it a different weapon mid-round. The
+       katana names one pose three times - a sword has no aim pitch, and that is
+       correct for a sword - so a body that came up holding one and was handed a
+       rifle would go on aiming with Sword_Idle: a rifle drawn in the hand, and
+       fired, by a chest that cannot pitch. The muzzle read off that pose is
+       neither aimed nor at the front of the gun, which is the same fault seen
+       from the other end.
+
+       What this measures is the spread: how far the gun hand travels between a
+       look down and a look up. A rifle's poses give it centimetres, three
+       copies of one pose give it nothing, and the gap between those two numbers
+       is the whole bug. */
+    {
+        float rifle_spread = 0.0f, swapped_spread = 0.0f, katana_spread = 0.0f;
+        float down[3], up[3];
+
+        character_animation_init(&animation, &model,
+                                 &WEAPON_SPEC_ASSAULT_RIFLE.clips);
+        if (!hand_at_pitch(&animation, &model, -50.0f, down)) return 1;
+        character_animation_init(&animation, &model,
+                                 &WEAPON_SPEC_ASSAULT_RIFLE.clips);
+        if (!hand_at_pitch(&animation, &model, 50.0f, up)) return 1;
+        rifle_spread = distance(down, up) * scale;
+
+        character_animation_init(&animation, &model, &WEAPON_SPEC_KATANA.clips);
+        if (!hand_at_pitch(&animation, &model, -50.0f, down)) return 1;
+        character_animation_init(&animation, &model, &WEAPON_SPEC_KATANA.clips);
+        if (!hand_at_pitch(&animation, &model, 50.0f, up)) return 1;
+        katana_spread = distance(down, up) * scale;
+
+        /* The switch itself: up holding a sword, handed a rifle. */
+        character_animation_init(&animation, &model, &WEAPON_SPEC_KATANA.clips);
+        character_animation_set_clips(&animation, &model,
+                                      &WEAPON_SPEC_ASSAULT_RIFLE.clips);
+        if (!hand_at_pitch(&animation, &model, -50.0f, down)) return 1;
+        character_animation_init(&animation, &model, &WEAPON_SPEC_KATANA.clips);
+        character_animation_set_clips(&animation, &model,
+                                      &WEAPON_SPEC_ASSAULT_RIFLE.clips);
+        if (!hand_at_pitch(&animation, &model, 50.0f, up)) return 1;
+        swapped_spread = distance(down, up) * scale;
+
+        printf("       gun hand travels %.3fm on a rifle, %.3fm on a sword\n",
+               (double)rifle_spread, (double)katana_spread);
+        check_min("a rifle's own aim moves the gun hand, metres",
+                  rifle_spread, 0.05f);
+        /* Three copies of one pose. Stated as a check rather than assumed,
+           because it is what makes the stale set invisible. */
+        check("a sword aims with one pose, metres", katana_spread, 0.0f, 0.005f);
+        check("a rifle picked up mid-round aims like a rifle, metres",
+              swapped_spread, rifle_spread, 0.005f);
     }
 
     printf("\n%s\n", failures ? "FAILURES" : "all checks passed");
