@@ -16,6 +16,7 @@
    renamed a material does, and exactly what nobody notices until a screenshot
    has an iron sight poking through an optic. */
 #include "gameplay/weapon_registry.h"
+#include "gameplay/viewmodel_pose.h"
 #include "gameplay/weapon_spec.h"
 #include "render/static_model.h"
 
@@ -142,7 +143,141 @@ static void check_names(void) {
     }
 }
 
-int main(void) {
+/* --- the golden snapshot -------------------------------------------------
+
+   Every number a weapon's placement can be READ THROUGH, printed and diffed
+   against a checked-in file.
+
+   The invariants above catch a weapon that is wrong on its own terms - a mesh
+   that will not load, a part name that matches nothing. What they cannot catch
+   is a weapon that is wrong relative to yesterday, and that is the failure
+   this system now makes easy: the numbers are shared. weapon_spec_sight_height
+   is a gun's rail plus an optic's reticle, so retuning a sight moves every gun
+   carrying it. weapon_spec_rest_pose is read by both the drawn weapon and the
+   arms' shoulder calibration. A nudge meant for the rifle lands on the pistol
+   and nothing says so, because nothing was ever wrong - it was only changed.
+
+   So: the derived values, not the stated ones. Stated values are already in
+   the file somebody just edited, and printing them back would only confirm
+   the edit. What is worth watching is what came OUT of the edit two functions
+   later.
+
+   `make golden` rewrites the file, deliberately, when a change was meant. */
+#define GOLDEN_PATH "tools/golden/placement.txt"
+
+static void print_pose(FILE* f, const char* label, const ViewmodelPose* p) {
+    fprintf(f, "  %-14s %+.4f %+.4f %+.4f  %+.2f %+.2f %+.2f\n", label,
+            (double)p->x, (double)p->y, (double)p->z,
+            (double)p->pitch, (double)p->yaw, (double)p->roll);
+}
+
+static void write_signature(FILE* f) {
+    fprintf(f, "Derived placement, one block per weapon in the registry.\n"
+               "Regenerate deliberately with `make golden` when a change was "
+               "meant.\n");
+    for (int i = 0; i < weapon_registry_count(); ++i) {
+        const WeaponSpec* spec = weapon_registry_get(i);
+        fprintf(f, "\n%s\n", spec->name);
+
+        /* The sight, whose height is the one number two different meshes
+           contribute halves of. */
+        fprintf(f, "  %-14s %+.4f\n", "sight_height",
+                (double)weapon_spec_sight_height(spec));
+        fprintf(f, "  %-14s %+.4f\n", "sight_forward",
+                (double)weapon_spec_sight_forward(spec));
+        fprintf(f, "  %-14s %+.2f %+.2f\n", "ads_fov",
+                (double)weapon_spec_ads_fov(spec),
+                (double)weapon_spec_view_ads_fov(spec));
+        fprintf(f, "  %-14s %+.4f\n", "ads_time",
+                (double)weapon_spec_ads_time(spec));
+
+        /* The resting pose at each end of its travel. What the weapon is
+           drawn at, and what the arms are calibrated against - so a drift
+           here is a drift in both, in agreement, and invisible. */
+        ViewmodelPose pose;
+        weapon_spec_rest_pose(spec, 0.0f, 0.0f, 0.0f, &pose);
+        print_pose(f, "rest", &pose);
+        weapon_spec_rest_pose(spec, 0.0f, 0.0f, 1.0f, &pose);
+        print_pose(f, "aimed", &pose);
+        weapon_spec_rest_pose(spec, 1.0f, 0.0f, 0.0f, &pose);
+        print_pose(f, "sprint", &pose);
+        weapon_spec_rest_pose(spec, 0.0f, 1.0f, 0.0f, &pose);
+        print_pose(f, "reload", &pose);
+
+        /* Where the hands are told to go, which is what the shoulder solve
+           reaches for. */
+        fprintf(f, "  %-14s %+.4f %+.4f %+.4f\n", "grip_right",
+                (double)spec->grip_right[0], (double)spec->grip_right[1],
+                (double)spec->grip_right[2]);
+        fprintf(f, "  %-14s %+.4f %+.4f %+.4f\n", "grip_left",
+                (double)spec->grip_left[0], (double)spec->grip_left[1],
+                (double)spec->grip_left[2]);
+
+        const MeleeSpec* melee = weapon_spec_melee(spec);
+        if (melee) {
+            float step[3];
+            weapon_spec_sheathed_step(melee, step);
+            fprintf(f, "  %-14s %+.4f %+.4f %+.4f\n", "sheathed_step",
+                    (double)step[0], (double)step[1], (double)step[2]);
+            for (int c = 0; c < MELEE_CARRY_COUNT; ++c) {
+                char label[24];
+                snprintf(label, sizeof label, "carry[%d]", c);
+                print_pose(f, label, &melee->carries[c]);
+            }
+        }
+    }
+}
+
+/* Writes the signature to a string, so it can be compared without a temp
+   file. Sized generously: three weapons is under two kilobytes and this is a
+   probe, not a hot path. */
+static int signature_matches(void) {
+    FILE* got = tmpfile();
+    if (!got) { expect(0, "a scratch file for the snapshot"); return 0; }
+    write_signature(got);
+
+    FILE* want = fopen(GOLDEN_PATH, "rb");
+    if (!want) {
+        fclose(got);
+        printf("   ---- no %s yet; run `make golden` to record one\n",
+               GOLDEN_PATH);
+        return 1;   /* not a failure: the first run has nothing to differ from */
+    }
+
+    rewind(got);
+    int line = 1, same = 1;
+    char a[512], b[512];
+    for (;;) {
+        char* ga = fgets(a, sizeof a, got);
+        char* gb = fgets(b, sizeof b, want);
+        if (!ga && !gb) break;
+        if (!ga || !gb || strcmp(a, b) != 0) {
+            if (same) printf("   ---- %s differs:\n", GOLDEN_PATH);
+            printf("     %d- %s", line, gb ? b : "(end of file)\n");
+            printf("     %d+ %s", line, ga ? a : "(end of file)\n");
+            same = 0;
+        }
+        ++line;
+    }
+    fclose(got);
+    fclose(want);
+    expect(same, "derived placement matches the golden snapshot");
+    return same;
+}
+
+int main(int argc, char** argv) {
+    /* `make golden` passes --update. Deliberately an argument rather than an
+       environment variable or a second binary: rewriting the file somebody is
+       diffing against should be something they typed. */
+    if (argc > 1 && strcmp(argv[1], "--update") == 0) {
+        FILE* f = fopen(GOLDEN_PATH, "wb");
+        if (!f) { printf("cannot write %s\n", GOLDEN_PATH); return 1; }
+        write_signature(f);
+        fclose(f);
+        printf("wrote %s\n", GOLDEN_PATH);
+        return 0;
+    }
+
     /* Every weapon there is, and not a list of the ones somebody remembered.
        See include/gameplay/weapon_registry.h for what that used to cost. */
     printf("%d weapons in the registry\n\n", weapon_registry_count());
@@ -153,6 +288,8 @@ int main(void) {
         check_mesh(weapon_registry_get(i));
     for (int i = 0; i < weapon_registry_count(); ++i)
         check_blade(weapon_registry_get(i));
+    printf("\nthe golden snapshot\n");
+    signature_matches();
     printf("\n%d failures\n", failures);
     return failures != 0;
 }

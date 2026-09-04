@@ -135,6 +135,13 @@ meleeprobe:  $(MELEE_PROBE); ./$(MELEE_PROBE)
 deathprobe:  $(DEATH_PROBE); ./$(DEATH_PROBE)
 specprobe:   $(SPEC_PROBE);  ./$(SPEC_PROBE)
 
+# Records what the weapons currently derive to. Run it when a change to a
+# shared number was MEANT - a retuned sight moves every gun carrying it, and
+# the point of the snapshot is that it says so.
+golden: $(SPEC_PROBE)
+	./$(SPEC_PROBE) --update
+	@git --no-pager diff --stat tools/golden/ || true
+
 $(TUNE_PROBE): tools/placement_probe.c $(HEADLESS_CORE)
 	@mkdir -p bin
 	$(PROBE_CC) $(PROBE_CFLAGS) $(CPPFLAGS) -DWEAPON_TUNING $< \
@@ -145,7 +152,7 @@ tuneprobe:   $(TUNE_PROBE);  ./$(TUNE_PROBE)
 probes: probe bodyprobe sheathprobe meleeprobe deathprobe specprobe \
         tuneprobe
 
-.PHONY: all tune build clean run probes \
+.PHONY: all tune build clean run probes golden \
         probe bodyprobe sheathprobe meleeprobe deathprobe specprobe tuneprobe
 
 all: $(TARGET)
