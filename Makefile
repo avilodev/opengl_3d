@@ -58,6 +58,7 @@ BODY_PROBE_SRCS := tools/body_probe.c src/render/character_animation.c \
 # tools/sheath_probe.c.
 SHEATH_PROBE := bin/sheath_probe
 SHEATH_PROBE_SRCS := tools/sheath_probe.c src/render/character_transform.c \
+              src/gameplay/weapon_registry.c src/render/static_model_glb.c \
               src/render/weapon_grip.c \
               src/render/arm_placement.c src/gameplay/action_track.c \
               src/render/character_animation.c \
@@ -71,6 +72,7 @@ SHEATH_PROBE_SRCS := tools/sheath_probe.c src/render/character_transform.c \
 # tools/melee_probe.c.
 MELEE_PROBE := bin/melee_probe
 MELEE_PROBE_SRCS := tools/melee_probe.c src/gameplay/melee_swing.c \
+              src/gameplay/weapon_registry.c \
               src/gameplay/weapon.c src/gameplay/traversal.c \
               src/render/viewmodel_neck.c \
               src/gameplay/action_track.c src/gameplay/third_person_camera.c \

@@ -15,6 +15,7 @@
 #include "gameplay/melee_swing.h"
 #include "gameplay/combatant.h"
 #include "gameplay/combat_tuning.h"
+#include "gameplay/weapon_registry.h"
 #include "gameplay/weapon_spec.h"
 #include "gameplay/weapon.h"
 #include "gameplay/weapon_tuning.h"
@@ -58,7 +59,7 @@ static Mat4 at(float x, float z) {
     return mat4_translation(x, SWING_HEIGHT, z);
 }
 
-/* Drives a katana through weapon_update with nothing else in the world, so the
+/* Drives a melee weapon through weapon_update with nothing else in the world, so the
    only thing that can move the chain is the input. */
 static void step(Weapon* weapon, const PlayerController* player,
                  int attack, int block, float delta_time) {
@@ -75,8 +76,8 @@ static void step(Weapon* weapon, const PlayerController* player,
    taken, none of which leaves a mark anywhere a player can see. A chain that
    silently refuses to advance looks like the player mistiming it; one that
    advances from outside the window looks like the game being generous. */
-static void check_chain(void) {
-    const MeleeSpec* melee = weapon_spec_melee(&WEAPON_SPEC_KATANA);
+static void check_chain(const WeaponSpec* spec) {
+    const MeleeSpec* melee = weapon_spec_melee(spec);
     PlayerController player;
     memset(&player, 0, sizeof player);
     player.ground.is_grounded = 1;
@@ -84,7 +85,7 @@ static void check_chain(void) {
     printf("\nthe chain advances inside the window\n");
     {
         Weapon weapon;
-        weapon_init(&weapon, &WEAPON_SPEC_KATANA);
+        weapon_init(&weapon, spec);
         weapon.sheathed = 0;
 
         step(&weapon, &player, 1, 0, 0.0f);
@@ -118,7 +119,7 @@ static void check_chain(void) {
     printf("\nan unchained swing settles through its recovery\n");
     {
         Weapon weapon;
-        weapon_init(&weapon, &WEAPON_SPEC_KATANA);
+        weapon_init(&weapon, spec);
         weapon.sheathed = 0;
         step(&weapon, &player, 1, 0, 0.0f);
         step(&weapon, &player, 0, 0, MELEE_ATTACK_SECONDS * 1.01f);
@@ -133,7 +134,7 @@ static void check_chain(void) {
 
         /* And left alone it runs out into nothing. */
         Weapon settled;
-        weapon_init(&settled, &WEAPON_SPEC_KATANA);
+        weapon_init(&settled, spec);
         settled.sheathed = 0;
         step(&settled, &player, 1, 0, 0.0f);
         step(&settled, &player, 0, 0, MELEE_ATTACK_SECONDS * 1.01f);
@@ -144,7 +145,7 @@ static void check_chain(void) {
         /* C ends the chain and has no recovery clip, so it goes straight to
            idle rather than settling through one that does not exist. */
         Weapon ended;
-        weapon_init(&ended, &WEAPON_SPEC_KATANA);
+        weapon_init(&ended, spec);
         ended.sheathed = 0;
         const MeleeAttack* a0 = &melee->attacks[melee->light_attack];
         float m0 = (a0->active_from + a0->active_to) * 0.5f;
@@ -163,7 +164,7 @@ static void check_chain(void) {
     printf("\nan input outside the window starts over\n");
     {
         Weapon weapon;
-        weapon_init(&weapon, &WEAPON_SPEC_KATANA);
+        weapon_init(&weapon, spec);
         weapon.sheathed = 0;
         step(&weapon, &player, 1, 0, 0.0f);
         /* Past the end of the attack and its recovery both, so the weapon is
@@ -179,7 +180,7 @@ static void check_chain(void) {
     printf("\nblock is refused while a swing is live\n");
     {
         Weapon weapon;
-        weapon_init(&weapon, &WEAPON_SPEC_KATANA);
+        weapon_init(&weapon, spec);
         weapon.sheathed = 0;
         step(&weapon, &player, 1, 0, 0.0f);
         const MeleeAttack* a = &melee->attacks[melee->light_attack];
@@ -200,7 +201,7 @@ static void check_chain(void) {
     printf("\nattacking draws the sword first\n");
     {
         Weapon weapon;
-        weapon_init(&weapon, &WEAPON_SPEC_KATANA);
+        weapon_init(&weapon, spec);
         check("a katana starts sheathed", (float)weapon.sheathed, 1.0f, 0.0f);
 
         step(&weapon, &player, 1, 0, 0.0f);
@@ -212,7 +213,7 @@ static void check_chain(void) {
 
         /* And the moment the draw lands, the swing the player asked for
            happens - the input is buffered, not dropped. */
-        const MeleeSpec* spec_melee = weapon_spec_melee(&WEAPON_SPEC_KATANA);
+        const MeleeSpec* spec_melee = weapon_spec_melee(spec);
         step(&weapon, &player, 0, 0, spec_melee->draw_time * 1.01f);
         check("the draw finishes", (float)weapon.melee_action,
               (float)WEAPON_MELEE_ACTION_NONE, 0.0f);
@@ -222,9 +223,9 @@ static void check_chain(void) {
 
     printf("\nand an idle sword puts itself away\n");
     {
-        const MeleeSpec* spec_melee = weapon_spec_melee(&WEAPON_SPEC_KATANA);
+        const MeleeSpec* spec_melee = weapon_spec_melee(spec);
         Weapon weapon;
-        weapon_init(&weapon, &WEAPON_SPEC_KATANA);
+        weapon_init(&weapon, spec);
         weapon.sheathed = 0;
 
         /* Just short of the timeout, it is still in hand. */
@@ -240,7 +241,7 @@ static void check_chain(void) {
         /* A held block is not idleness. A player standing guard must not have
            the sword taken out of their hands. */
         Weapon guard;
-        weapon_init(&guard, &WEAPON_SPEC_KATANA);
+        weapon_init(&guard, spec);
         guard.sheathed = 0;
         for (int i = 0; i < 8; ++i)
             step(&guard, &player, 0, 1, MELEE_AUTO_SHEATHE_SECONDS * 0.5f);
@@ -248,7 +249,7 @@ static void check_chain(void) {
 
         /* Nor is swinging: a chain must never race the clock. */
         Weapon busy;
-        weapon_init(&busy, &WEAPON_SPEC_KATANA);
+        weapon_init(&busy, spec);
         busy.sheathed = 0;
         for (int i = 0; i < 8; ++i) {
             step(&busy, &player, 1, 0, 0.0f);
@@ -267,7 +268,7 @@ static void check_chain(void) {
    the input, the clock, the published transform and the swing is broken
    anywhere along its length, the number below stays at full health and every
    other check in this file still passes. */
-static void check_end_to_end(void) {
+static void check_end_to_end(const WeaponSpec* spec) {
     printf("\nthe blade cuts, driven the way the game drives it\n");
 
     PlayerController player;
@@ -279,7 +280,7 @@ static void check_end_to_end(void) {
     float before = set.items[0].health;
 
     Weapon weapon;
-    weapon_init(&weapon, &WEAPON_SPEC_KATANA);
+    weapon_init(&weapon, spec);
     weapon_set_targets(&weapon, &set);
     weapon.sheathed = 0;   /* drawn, as it is a moment after any first swing */
 
@@ -312,7 +313,7 @@ static void check_end_to_end(void) {
     one_body(&safe, 0.0f, -0.6f);
     float safe_before = safe.items[0].health;
     Weapon away;
-    weapon_init(&away, &WEAPON_SPEC_KATANA);
+    weapon_init(&away, spec);
     weapon_set_targets(&away, &safe);
     for (int f = 0; f < 40; ++f) {
         float t = (float)f / 39.0f;
@@ -324,28 +325,55 @@ static void check_end_to_end(void) {
           safe_before - safe.items[0].health, 0.0f, 0.0f);
 }
 
-int main(void) {
-    const WeaponSpec* spec = &WEAPON_SPEC_KATANA;
+/* How far forward of the hand this weapon cuts. The blade runs down -z in the
+   weapon's own frame, so the tip's -z is its reach.
+
+   Every distance below is a fraction of this rather than a metre, which is
+   what lets a knife be checked by the same code that checks a sword: the
+   katana reaches 0.907m and the constants this replaces were 0.6, 0.4 and 0.5,
+   which are the same fractions of it. A short blade gets a short test, and the
+   geometry stays in the same relation to the weapon. */
+static float reach_of(const MeleeSpec* melee) {
+    return -melee->blade_tip[2];
+}
+
+/* One weapon, swung every way the probe knows how.
+
+   The positive checks here are what make deriving the geometry safe. If a
+   fraction were wrong for some weapon and the blade never reached the body,
+   "one body, one swing" would fail rather than pass by finding nothing - so a
+   test that no longer tests anything reports itself instead of going quiet.
+   That is the one property worth having when the distances stop being typed
+   in by hand. */
+static void check_weapon(const WeaponSpec* spec) {
     const MeleeSpec* melee = weapon_spec_melee(spec);
     const MeleeAttack* attack = &melee->attacks[melee->light_attack];
     float live = (attack->active_from + attack->active_to) * 0.5f;
 
-    /* A body a metre and a half in front of the origin, which the blade
-       reaches: the katana's tip is 0.907m out and the body is 0.6m from the
-       swing's own path at its closest. */
+    float reach = reach_of(melee);
+    /* The body sits off the swing's own path by two thirds of the reach, so
+       the blade crosses it rather than passing through its centre - a hit
+       through the middle would pass whatever the sweep did. */
+    float lateral = reach * 0.66f;
+    float sweep = reach * 0.44f;   /* both ends inside the body's radius */
+    float wide = reach * 0.55f;    /* both ends outside it - the tunnel test */
+
     CombatantSet set;
+
+    printf("\n=== %s: reach %.3fm, body at %.3f, sweep +-%.3f\n",
+           spec->name, (double)reach, (double)lateral, (double)sweep);
 
     printf("one body, one swing\n");
     {
-        one_body(&set, 0.0f, -0.6f);
+        one_body(&set, 0.0f, -lateral);
         MeleeSwing swing;
         melee_swing_begin(&swing, melee->light_attack);
         /* The blade crosses the body and then keeps going, three frames of
            active window. Without a hit list this pays three times. */
         int hits = 0;
-        Mat4 prev = at(-0.4f, 0.0f);
+        Mat4 prev = at(-sweep, 0.0f);
         for (int f = 0; f < 3; ++f) {
-            Mat4 now = at(-0.4f + 0.4f * (f + 1), 0.0f);
+            Mat4 now = at(-sweep + sweep * 2.0f * (f + 1) / 3.0f, 0.0f);
             hits += melee_swing_update(&swing, spec, &prev, &now, live, &set);
             prev = now;
         }
@@ -354,11 +382,11 @@ int main(void) {
 
     printf("\nnothing lands outside the window\n");
     {
-        one_body(&set, 0.0f, -0.6f);
+        one_body(&set, 0.0f, -lateral);
         MeleeSwing swing;
         melee_swing_begin(&swing, melee->light_attack);
-        Mat4 prev = at(-0.4f, 0.0f);
-        Mat4 now = at(0.4f, 0.0f);
+        Mat4 prev = at(-sweep, 0.0f);
+        Mat4 now = at(sweep, 0.0f);
         /* Halfway through the wind-up: the blade sweeps the same space and is
            not cutting with it. */
         float early = attack->active_from * 0.5f;
@@ -373,29 +401,40 @@ int main(void) {
 
     printf("\na fast swing does not tunnel\n");
     {
-        one_body(&set, 0.0f, -0.6f);
+        one_body(&set, 0.0f, -lateral);
         MeleeSwing swing;
         melee_swing_begin(&swing, melee->light_attack);
         /* Both ENDS clear of the body, which is what makes this a real check
            rather than one that passes because the blade happened to stop
-           inside somebody. COMBAT_BODY_RADIUS on this rig is 0.405m - the rig
-           is 2.53m tall - so a blade at x +-0.5 misses at both ends and only
-           the steps between them can connect. Tested only where the blade
-           ends up, this finds nothing at all. */
-        Mat4 prev = at(-0.5f, 0.0f);
-        Mat4 now = at(0.5f, 0.0f);
+           inside somebody. Tested only where the blade ends up, this finds
+           nothing at all.
+
+           Whether the ends really are clear depends on the body's radius,
+           which is a property of the rig and does not scale with the blade -
+           so it is stated as a check rather than assumed. A weapon short
+           enough that its whole sweep sits inside one body still passes the
+           line below, but it is no longer testing tunnelling, and this says
+           so instead of letting it look like it is. */
+        float clearance = wide - COMBAT_BODY_RADIUS;
+        if (clearance <= 0.0f)
+            printf("  ---- reach is short of the body's radius; the sweep "
+                   "cannot start clear, so this is a hit test and not a "
+                   "tunnelling one\n");
+
+        Mat4 prev = at(-wide, 0.0f);
+        Mat4 now = at(wide, 0.0f);
         int hits = melee_swing_update(&swing, spec, &prev, &now, live, &set);
         check("fast swing past a body", (float)hits, 1.0f, 0.0f);
     }
 
     printf("\nand it costs the body something\n");
     {
-        one_body(&set, 0.0f, -0.6f);
+        one_body(&set, 0.0f, -lateral);
         float before = set.items[0].health;
         MeleeSwing swing;
         melee_swing_begin(&swing, melee->light_attack);
-        Mat4 prev = at(-0.4f, 0.0f);
-        Mat4 now = at(0.4f, 0.0f);
+        Mat4 prev = at(-sweep, 0.0f);
+        Mat4 now = at(sweep, 0.0f);
         melee_swing_update(&swing, spec, &prev, &now, live, &set);
         float taken = before - set.items[0].health;
         /* Banded by region like every other hit, so the exact figure depends
@@ -407,9 +446,34 @@ int main(void) {
         if (taken <= 0.0f) { ++failures; printf("  FAIL nothing was taken\n"); }
     }
 
-    check_chain();
-    check_end_to_end();
+    check_chain(spec);
+    check_end_to_end(spec);
+}
 
-    printf("\n%s\n", failures ? "FAILURES" : "all checks passed");
+int main(void) {
+    /* Every melee weapon in the registry, and not the one this file was
+       written for. A second sword is checked by being in weapon_list.h. */
+    int checked = 0;
+    for (int i = 0; i < weapon_registry_count(); ++i) {
+        const WeaponSpec* spec = weapon_registry_get(i);
+        const MeleeSpec* melee = weapon_spec_melee(spec);
+        if (!melee) continue;
+        if (reach_of(melee) <= 0.0f) {
+            ++failures;
+            printf("FAIL %s: the blade has no forward reach to swing\n",
+                   spec->name);
+            continue;
+        }
+        check_weapon(spec);
+        ++checked;
+    }
+
+    if (checked == 0) {
+        printf("no melee weapon in the registry\n");
+        return 1;
+    }
+
+    printf("\n%d melee weapon(s), %s\n", checked,
+           failures ? "FAILURES" : "all checks passed");
     return failures != 0;
 }
