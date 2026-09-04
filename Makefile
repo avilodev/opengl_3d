@@ -80,6 +80,7 @@ HEADLESS_CORE := \
     src/gameplay/weapon_registry.c \
     src/gameplay/weapon_spec.c \
     src/gameplay/weapon_specs.c \
+    src/render/arm_geometry.c \
     src/render/arm_placement.c \
     src/render/character_animation.c \
     src/render/character_transform.c \
