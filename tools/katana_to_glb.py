@@ -108,7 +108,7 @@ def main():
     print('scale %.6f m per unit, %.4f m long, %.4f m tall, %.4f m wide'
           % (scale, manifest['overall_length'],
              (high[1] - low[1]) * scale, (high[0] - low[0]) * scale))
-    ai.write_placement(FOLDER, {
+    ai.write_measured(FOLDER, {
         'blade_tip_forward': sword_frame.along(2, high[2]),
         'grip_butt_back': -sword_frame.along(2, low[2]),
         'grip_length': (grip_high[2] - grip_low[2]) * scale,

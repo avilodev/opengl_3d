@@ -6,6 +6,7 @@
 #include "gameplay/arena.h"
 #include "gameplay/player_combatant.h"
 #include "gameplay/player_loadout.h"
+#include "gameplay/weapon_placement.h"
 #include "gameplay/weapon_registry.h"
 #include "gameplay/player_controller.h"
 #include "gameplay/weapon_tuning.h"
@@ -193,6 +194,16 @@ int main(void) {
        that moves it - there is no class selection before a round yet. */
     int current_class = 0;
     pause_menu_init(&pause_menu, current_class);
+    /* Any placement.json sitting beside an asset, read over the weapon it
+       belongs to, before the first one is armed. Nothing in a release build:
+       weapon_placement_load_all is an empty answer without the tuning overlay,
+       and no file is opened. See gameplay/weapon_placement.h. */
+    if (weapon_registry_tuning_enabled()) {
+        int tuned = weapon_placement_load_all();
+        printf("tuning build: %d weapon(s) reading a placement file. "
+               "F5 re-reads, F6 prints one back as C.\n", tuned);
+    }
+
     /* The auto pistol (WEAPON_SPEC_AUTO_PISTOL) is still here and still
        works; the player is simply not carrying it yet. */
     weapon_init(&weapon, player_loadout_get(current_class)->weapon);
@@ -260,6 +271,8 @@ int main(void) {
        runs no simulation step would otherwise drop it. */
     int pending_debug_damage = 0;
     int pending_next_weapon = 0;
+    int pending_reload_placement = 0;
+    int pending_bake_placement = 0;
     /* Which swing the body is already playing, so a clip is looked up when it
        changes and not every frame. Out here rather than beside the code that
        reads them because swapping the weapon has to be able to forget them:
@@ -327,6 +340,8 @@ int main(void) {
             pending_lean_left = pending_lean_right = 0;
             pending_debug_damage = 0;
             pending_next_weapon = 0;
+            pending_reload_placement = 0;
+            pending_bake_placement = 0;
         } else {
             /* The simulation runs on a fixed step and the frame feeds it time.
                Movement is full of per-step decisions - a clamped air-strafe
@@ -352,6 +367,10 @@ int main(void) {
                                                    ACTION_DEBUG_DAMAGE);
             pending_next_weapon |= action_pressed(&actions,
                                                   ACTION_DEBUG_NEXT_WEAPON);
+            pending_reload_placement |=
+                action_pressed(&actions, ACTION_DEBUG_RELOAD_PLACEMENT);
+            pending_bake_placement |=
+                action_pressed(&actions, ACTION_DEBUG_BAKE_PLACEMENT);
 
             /* Aiming is not simulation. A mouse delta is an amount the frame
                already measured, and deferring it to the next step that happens
@@ -510,6 +529,33 @@ int main(void) {
                 }
                 simulation_accumulator -= SIMULATION_STEP;
             }
+        }
+
+        /* The held weapon's placement, re-read or printed back out. Both are
+           nothing at all in a release build - weapon_registry_tunable answers
+           NULL and weapon_placement_emit is an empty function - so the branch
+           costs a test against a constant and the linker drops the rest.
+
+           The re-read arms the weapon again afterwards, because the numbers it
+           just changed are ones weapon_init reads: a grip moved without that
+           would be a grip the arms solve against next frame and the shoulders
+           were calibrated against last frame. */
+        if (pending_reload_placement) {
+            pending_reload_placement = 0;
+            int index = weapon_registry_index_of(weapon.spec);
+            WeaponSpec* tunable = weapon_registry_tunable(index);
+            if (tunable && weapon_placement_load(tunable) > 0) {
+                weapon_init(&weapon, tunable);
+                weapon_set_targets(&weapon, &combatants);
+                body.weapon = weapon.spec;
+                body.sheathed = weapon.sheathed;
+                played_attack = -2;
+                played_recovery = -1;
+            }
+        }
+        if (pending_bake_placement) {
+            pending_bake_placement = 0;
+            weapon_placement_emit(weapon.spec, NULL);
         }
 
         /* The next weapon in the registry, if the development key was pressed.

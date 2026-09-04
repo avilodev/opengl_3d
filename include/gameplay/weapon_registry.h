@@ -40,4 +40,26 @@ const WeaponSpec* weapon_registry_find(const char* name);
    cycle key needs to answer "and then the next one". */
 int weapon_registry_index_of(const WeaponSpec* spec);
 
+/* --- the tuning overlay -------------------------------------------------
+   Only under WEAPON_TUNING, and inert without it.
+
+   A weapon a placement file may write over. The specs in weapon_specs.c are
+   const globals and must stay that way - they are what ships - so a tuning
+   build keeps a mutable COPY of each, and it is the copy that everything gets.
+   weapon_registry_get answers the copy when the overlay is compiled in and the
+   literal when it is not, so no caller anywhere learns that tuning exists.
+
+   The copies carry their own FirearmSpec and MeleeSpec, re-pointed, because
+   most of the numbers worth nudging are on those halves rather than on the
+   WeaponSpec itself.
+
+   Answers NULL for an index off the end, and for every index in a build with
+   no overlay - which is what a caller should check rather than assuming. */
+WeaponSpec* weapon_registry_tunable(int index);
+
+/* Whether this build has the overlay at all. A constant, so the branches
+   around it fold away in a release build rather than being #ifdef'd at every
+   site. */
+int weapon_registry_tuning_enabled(void);
+
 #endif

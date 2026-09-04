@@ -122,7 +122,7 @@ def main():
 
     print('scale %.6f m per unit, %.3f m overall'
           % (scale, manifest['overall_length']))
-    ai.write_placement(FOLDER, {
+    ai.write_measured(FOLDER, {
         'muzzle_forward': -frame.place(high[0], bore_y, bore_z)[2],
         'muzzle_up': frame.place(high[0], bore_y, bore_z)[1],
         'rail_height': (max(p[1] for p in rail) - bore_y) * scale,

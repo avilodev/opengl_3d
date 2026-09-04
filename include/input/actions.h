@@ -40,6 +40,14 @@ typedef enum {
        It goes when weapon switching becomes a thing the player does, at which
        point what replaces it is a binding rather than a debug one. */
     ACTION_DEBUG_NEXT_WEAPON,
+    /* Re-reads the held weapon's placement.json and arms it again, so a number
+       nudged in an editor is on screen without a rebuild. Inert in a build
+       without the tuning overlay - see gameplay/weapon_placement.h for what
+       that is and why it is scaffolding rather than the shipping format. */
+    ACTION_DEBUG_RELOAD_PLACEMENT,
+    /* Prints the held weapon's placement as C, ready to paste into
+       weapon_specs.c. How the scaffolding comes down. */
+    ACTION_DEBUG_BAKE_PLACEMENT,
     ACTION_COUNT
 } Action;
 

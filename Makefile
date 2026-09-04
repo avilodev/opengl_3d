@@ -11,7 +11,7 @@ TARGET := bin/Game.exe
 # of them would otherwise become what a bare `make` does.
 .DEFAULT_GOAL := all
 BUILD_DIR := build
-RUNTIME_DIRS := assets data models
+OBJ_DIR := obj
 
 # Directories that are part of the build. Adding a .c file to one of these
 # needs no change here; adding a new module directory needs one word.
@@ -23,7 +23,7 @@ SRC_DIRS := src src/render src/gameplay src/input src/states
 SRC_FILES := src/core/json.c
 
 SRCS := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c)) $(SRC_FILES)
-OBJS := $(patsubst src/%.c,obj/%.o,$(SRCS))
+OBJS := $(patsubst src/%.c,$(OBJ_DIR)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
 
 # ---------------------------------------------------------------------------
@@ -76,6 +76,7 @@ HEADLESS_CORE := \
     src/gameplay/weapon.c \
     src/gameplay/weapon_firearm.c \
     src/gameplay/weapon_melee.c \
+    src/gameplay/weapon_placement.c \
     src/gameplay/weapon_registry.c \
     src/gameplay/weapon_spec.c \
     src/gameplay/weapon_specs.c \
@@ -92,7 +93,11 @@ HEADLESS_CORE := \
     src/render/weapon_grip.c
 
 PROBE_CC := gcc
-PROBE_CFLAGS := -Wall -Wextra -std=c11 -O1
+# -MMD -MP so a probe rebuilds when a HEADER it reads changes, not only when a
+# .c does. Without it, editing weapon_spec.h and running a probe re-ran the
+# stale binary and reported a pass on code that no longer existed - which is
+# the most expensive kind of green there is.
+PROBE_CFLAGS := -Wall -Wextra -std=c11 -O1 -MMD -MP
 
 # Every probe: the target name, the tool that holds its main, and one line each.
 # All of them run from the project root, for the relative model paths the game
@@ -110,9 +115,13 @@ SHEATH_PROBE:= bin/sheath_probe
 MELEE_PROBE := bin/melee_probe
 DEATH_PROBE := bin/death_probe
 SPEC_PROBE  := bin/weapon_spec_probe
+# The one probe built with the tuning overlay compiled in - see
+# tools/placement_probe.c. A check on the overlay that compiled it out would be
+# a check that passes by not running.
+TUNE_PROBE  := bin/placement_probe
 
 PROBES := $(PROBE) $(BODY_PROBE) $(SHEATH_PROBE) $(MELEE_PROBE) \
-          $(DEATH_PROBE) $(SPEC_PROBE)
+          $(DEATH_PROBE) $(SPEC_PROBE) $(TUNE_PROBE)
 
 # One recipe for all six. $* is the probe's own source stem.
 bin/%: tools/%.c $(HEADLESS_CORE)
@@ -126,19 +135,37 @@ meleeprobe:  $(MELEE_PROBE); ./$(MELEE_PROBE)
 deathprobe:  $(DEATH_PROBE); ./$(DEATH_PROBE)
 specprobe:   $(SPEC_PROBE);  ./$(SPEC_PROBE)
 
-# Everything the probes check, in one word. What to run before a commit.
-probes: probe bodyprobe sheathprobe meleeprobe deathprobe specprobe
+$(TUNE_PROBE): tools/placement_probe.c $(HEADLESS_CORE)
+	@mkdir -p bin
+	$(PROBE_CC) $(PROBE_CFLAGS) $(CPPFLAGS) -DWEAPON_TUNING $< \
+	    $(HEADLESS_CORE) -o $@ -lm
+tuneprobe:   $(TUNE_PROBE);  ./$(TUNE_PROBE)
 
-.PHONY: all build clean run probes \
-        probe bodyprobe sheathprobe meleeprobe deathprobe specprobe
+# Everything the probes check, in one word. What to run before a commit.
+probes: probe bodyprobe sheathprobe meleeprobe deathprobe specprobe \
+        tuneprobe
+
+.PHONY: all tune build clean run probes \
+        probe bodyprobe sheathprobe meleeprobe deathprobe specprobe tuneprobe
 
 all: $(TARGET)
+
+# The same game with the placement overlay compiled in: it reads any
+# placement.json sitting beside an asset, F5 re-reads one, and F6 prints it
+# back as C to paste into weapon_specs.c. See gameplay/weapon_placement.h.
+#
+# A separate target and a separate object directory, so that switching between
+# tuning and shipping is not a full rebuild each way - and so that `make` can
+# never accidentally produce the build that opens files.
+tune:
+	$(MAKE) OBJ_DIR=obj-tune TARGET=bin/GameTuning.exe \
+	    CPPFLAGS='$(CPPFLAGS) -DWEAPON_TUNING' all
 
 $(TARGET): $(OBJS)
 	@mkdir -p $(dir $@)
 	$(CC) $(OBJS) -o $@ $(LDFLAGS) $(LDLIBS)
 
-obj/%.o: src/%.c
+$(OBJ_DIR)/%.o: src/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
@@ -146,15 +173,35 @@ run: all
 	$(TARGET)
 
 # Assemble a self-contained folder whose working directory matches the runtime
-# paths used by the game. Recreate it so removed or renamed assets cannot linger
-# in a package from an earlier build.
+# paths used by the game. Recreated each time so removed or renamed assets
+# cannot linger in a package from an earlier build.
+#
+# models/ is filtered rather than copied whole. The directory is 165MB and the
+# game opens six files out of it: the rest is source FBX, .blend files, the
+# artist's texture sets, the _RM animation variants that are deliberately not
+# loaded, and now the import manifests and measurements. None of that is a
+# runtime asset - the importer folds the textures INTO the .glb - and shipping
+# it put a hundred and sixty megabytes of somebody else's licensed source art
+# into every build.
+#
+# Every .glb rather than the six named ones, deliberately: which meshes a
+# weapon names is a fact about weapon_specs.c, and a package that had to be
+# told would be a package that silently missed the next one. Copying twenty
+# megabytes and never being wrong beats copying five and sometimes being wrong.
+RUNTIME_DIRS := assets data
+
 build: all
 	rm -rf $(BUILD_DIR)
 	mkdir -p $(BUILD_DIR)
 	cp $(TARGET) $(BUILD_DIR)/Game.exe
 	cp -R $(RUNTIME_DIRS) $(BUILD_DIR)/
+	cd models && find . -name '*.glb' -print0 | \
+	    tar --null -cf - --files-from=- | (cd ../$(BUILD_DIR) && mkdir -p models && tar -xf - -C models)
+	@echo "packaged $$(find $(BUILD_DIR) -type f | wc -l) files, $$(du -sh $(BUILD_DIR) | cut -f1)"
 
 clean:
-	rm -rf obj $(TARGET) $(PROBES) $(BUILD_DIR)
+	rm -rf obj obj-tune $(TARGET) bin/GameTuning.exe \
+	    $(PROBES) $(PROBES:%=%.d) $(BUILD_DIR)
 
 -include $(DEPS)
+-include $(PROBES:%=%.d)

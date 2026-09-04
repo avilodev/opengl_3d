@@ -858,6 +858,40 @@ states, and would make the taxonomy an argument to have again for every asset
 that does not fit cleanly on one side of it. A weapon folder holds its source
 FBX as `source.fbx`, its maps in `textures/`, and the `.glb` the engine reads.
 
+A weapon folder also holds two small JSON files, and they are different things:
+
+- `import.json` — how to bake the `.glb`: source, scale, axes, which map goes
+  on which material. Hand-written, read only by the importer.
+- `measured.json` — what the importer measured off the finished mesh: the rail
+  height above the bore, the depth of the scabbard, where the muzzle ends up.
+  Machine-written, overwritten every import, never edited. It exists because a
+  number a machine computed and a human retyped is a number that can be retyped
+  wrong, and nothing downstream can tell.
+
+### Tuning a weapon's placement
+
+Finding where a hand closes on a new mesh is twenty rounds of nudge, rebuild,
+restart, walk back. `make tune` builds `bin/GameTuning.exe`, which reads a
+`placement.json` beside any asset and lets you skip the rebuild:
+
+```sh
+make tune
+# edit models/weapons/katana/placement.json, then press F5 in game
+# press F6 to print the result back as C, paste it into weapon_specs.c,
+# and delete the placement.json
+```
+
+A file states only the fields it is changing — a whole pose or just its `roll`.
+The fields are listed in `include/gameplay/weapon_placement_fields.h`, which is
+also what drives the reader, the writer and `make tuneprobe`, so the four
+cannot drift.
+
+**The C is still the real thing.** `placement.json` is scaffolding and is meant
+to come down: a release build has none of this compiled in, opens no file, and
+cannot fail to parse one. The reason the numbers do not simply live in JSON is
+that the comments around them in `weapon_specs.c` are most of what says why a
+number is what it is, and JSON has nowhere to put them.
+
 The rifle comes from `models/weapons/m4_carbine/`, and `tools/fbx_to_glb.py` is what puts
 it in a form the engine reads. Nothing in the toolchain imports FBX, so that
 script is the import step: it parses the binary FBX, triangulates it, bakes the

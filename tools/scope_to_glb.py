@@ -246,7 +246,7 @@ def main():
     print('scale %.6f m per unit, %.4f m long, %.4f m tall, %.4f m wide'
           % (scale, OVERALL_LENGTH, (high[1] - low[1]) * scale,
              (high[2] - low[2]) * scale))
-    ai.write_placement(FOLDER, {
+    ai.write_measured(FOLDER, {
         'reticle_height': (origin[1] - seat) * scale,
         'window_width': (max(pane_z) - min(pane_z)) * scale,
         'window_height': (max(pane_y) - min(pane_y)) * scale,

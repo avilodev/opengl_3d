@@ -36,7 +36,11 @@ static const ActionEntry ACTIONS[ACTION_COUNT] = {
     {"pause", ACTION_PAUSE, KEY_BIND(ESCAPE), KEY_BIND(UNKNOWN)},
     {"resume", ACTION_RESUME, KEY_BIND(ENTER), KEY_BIND(UNKNOWN)},
     {"debug_damage", ACTION_DEBUG_DAMAGE, KEY_BIND(K), KEY_BIND(UNKNOWN)},
-    {"debug_next_weapon", ACTION_DEBUG_NEXT_WEAPON, KEY_BIND(J), KEY_BIND(UNKNOWN)}
+    {"debug_next_weapon", ACTION_DEBUG_NEXT_WEAPON, KEY_BIND(J), KEY_BIND(UNKNOWN)},
+    {"debug_reload_placement", ACTION_DEBUG_RELOAD_PLACEMENT,
+     KEY_BIND(F5), KEY_BIND(UNKNOWN)},
+    {"debug_bake_placement", ACTION_DEBUG_BAKE_PLACEMENT,
+     KEY_BIND(F6), KEY_BIND(UNKNOWN)}
 };
 
 static Binding bindings[ACTION_COUNT][2];

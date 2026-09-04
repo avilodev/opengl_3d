@@ -290,19 +290,29 @@ class Primitives:
         return size
 
 
-def write_placement(folder, values):
-    """The numbers this import MEASURED, written where the code can read them.
+def write_measured(folder, values):
+    """The numbers this import MEASURED off the mesh, written where the code
+    can read them.
 
     This is the point of the whole file. tools/scope_to_glb.py measured the
-    optic's rail height and printed it for a person to copy into
-    weapon_specs.c; tools/sheath_probe.c carried the saya's depth as a
-    #define somebody had transcribed. Both were right, and both were right
-    only until the asset was exported again - at which point the mesh moved
-    and the number did not, and nothing anywhere could tell.
+    optic's rail height and printed it for a person to copy into sights.c;
+    tools/sheath_probe.c carried the saya's depth as a #define somebody had
+    transcribed. Both were right, and both were right only until the asset was
+    exported again - at which point the mesh moved and the number did not, and
+    nothing anywhere could tell.
+
+    measured.json and not placement.json, because the two are different things
+    and keeping them apart is what stops either being half-trusted. This file
+    is FACTS ABOUT THE MESH, written by a machine, overwritten every import,
+    and never edited by hand. placement.json beside it is the tuning overlay -
+    spec fields a person is nudging, hand-edited, and deleted once its numbers
+    are baked back into weapon_specs.c. Some numbers appear in both, which is
+    exactly the interesting case: it means a measurement and a tuned value can
+    be compared.
 
     Written sorted and with a trailing newline so that re-running an import
     that changed nothing leaves no diff."""
-    path = os.path.join(folder, 'placement.json')
+    path = os.path.join(folder, "measured.json")
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(values, f, indent=2, sort_keys=True)
         f.write('\n')

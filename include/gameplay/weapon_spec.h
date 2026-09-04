@@ -25,6 +25,20 @@
    Stated apart and summed by weapon_spec_sight_height, either half can change
    without the other knowing. */
 
+/* ADDING A FIELD to any struct in this file: decide, then, which kind of
+   number it is, because the answer stops being obvious within a week.
+
+     MEASURED - off a mesh, or found by nudging it and looking at the screen.
+                It changes when the ASSET changes. Add a row to
+                weapon_placement_fields.h so the tuning overlay can reach it,
+                and update the sizes pinned in tools/placement_probe.c.
+     CHOSEN   - found by playing. It changes when the DESIGN changes, and it
+                belongs here and nowhere else. Update the pinned sizes.
+
+   A measured field left out of the table is a number that cannot be tuned and
+   does not say so; the probe catches most of those and not all, which is why
+   this note is at the point of edit rather than only in the probe. */
+
 /* Enough for the furniture one gun wants off. Raising it costs a pointer per
    spec and nothing else. */
 #define WEAPON_MAX_HIDDEN_PARTS 4

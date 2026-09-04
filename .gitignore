@@ -4,3 +4,6 @@ bin/
 *.blend1
 run.log
 __pycache__/
+obj-tune/
+bin/GameTuning.exe
+models/**/placement.json
