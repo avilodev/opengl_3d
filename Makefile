@@ -21,93 +21,109 @@ SRCS := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c)) $(SRC_FILES)
 OBJS := $(patsubst src/%.c,obj/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
 
-# The headless probe: the viewmodel's arithmetic checked without a window. Built
-# with the HOST compiler, not the cross one, because the point is to run it here
-# - it links only the parts that need no GL context, which is why the placement
-# search lives in its own file. See tools/viewmodel_probe.c.
-PROBE := bin/viewmodel_probe
+# ---------------------------------------------------------------------------
+# The headless probes
+#
+# Six programs that check arithmetic without a window: which way a body bends,
+# whether a pose jumps when a clip changes, what a swing hits, where a scabbard
+# is worn, whether a weapon's spec agrees with its mesh. All built with the HOST
+# compiler rather than the cross one, because the point is to run them here.
+#
+# They link one list between them rather than six.
+#
+# There used to be a hand-maintained source list per probe - about a hundred
+# lines of them - and the failure mode was always the same: a module split in
+# two, or a new file added, and the six lists went out of step one at a time.
+# Whichever probe was not edited failed to link, and it failed to link later,
+# when somebody happened to run it. Six lists that must agree are five chances
+# to disagree.
+#
+# One list costs a few seconds of compiling per probe, and nothing else: these
+# are small translation units and none of them touches GL. What it buys is that
+# splitting weapon.c into three, or adding a module, is a line here and nothing
+# anywhere else.
+#
+# The rule for this list is exactly "does it compile without a GL context". A
+# file that needs one belongs in the game build and not in a probe; that is why
+# the placement search lives in arm_placement.c apart from the renderer that
+# calls it, and why the _glb readers are split from the modules that upload
+# what they read.
+HEADLESS_CORE := \
+    src/core/json.c \
+    src/gameplay/action_track.c \
+    src/gameplay/arena.c \
+    src/gameplay/combatant.c \
+    src/gameplay/damage_number.c \
+    src/gameplay/melee_swing.c \
+    src/gameplay/player_combatant.c \
+    src/gameplay/player_controller.c \
+    src/gameplay/player_grapple.c \
+    src/gameplay/player_locomotion.c \
+    src/gameplay/player_mantle.c \
+    src/gameplay/player_slide.c \
+    src/gameplay/player_wallclimb.c \
+    src/gameplay/player_wallrun.c \
+    src/gameplay/sights.c \
+    src/gameplay/spawn_select.c \
+    src/gameplay/third_person_camera.c \
+    src/gameplay/traversal.c \
+    src/gameplay/viewmodel_pose.c \
+    src/gameplay/weapon.c \
+    src/gameplay/weapon_registry.c \
+    src/gameplay/weapon_spec.c \
+    src/gameplay/weapon_specs.c \
+    src/render/arm_placement.c \
+    src/render/character_animation.c \
+    src/render/character_transform.c \
+    src/render/glb.c \
+    src/render/skinned_model_glb.c \
+    src/render/skinned_pose.c \
+    src/render/static_model_glb.c \
+    src/render/stb_image.c \
+    src/render/viewmodel_clip_arms.c \
+    src/render/viewmodel_neck.c \
+    src/render/weapon_grip.c
+
 PROBE_CC := gcc
-PROBE_SRCS := tools/viewmodel_probe.c src/render/arm_placement.c \
-              src/render/viewmodel_clip_arms.c src/render/viewmodel_neck.c \
-              src/render/character_transform.c src/render/character_animation.c \
-              src/render/weapon_grip.c \
-              src/gameplay/viewmodel_pose.c src/gameplay/weapon_spec.c \
-              src/gameplay/weapon_specs.c src/gameplay/sights.c \
-              src/render/skinned_model_glb.c src/render/skinned_pose.c \
-              src/render/glb.c src/render/stb_image.c src/core/json.c \
-              src/gameplay/weapon.c src/gameplay/melee_swing.c \
-              src/gameplay/traversal.c src/gameplay/arena.c \
-              src/gameplay/action_track.c src/gameplay/combatant.c \
-              src/gameplay/damage_number.c src/gameplay/third_person_camera.c
+PROBE_CFLAGS := -Wall -Wextra -std=c11 -O1
 
-# The character rig's arithmetic, checked the same way and for the same reason
-# the viewmodel's is: which way a body bends is a sign, and whether a pose jumps
-# when a clip changes is a subtraction. Neither is something to settle by eye.
-BODY_PROBE := bin/body_probe
-BODY_PROBE_SRCS := tools/body_probe.c src/render/character_animation.c \
-              src/gameplay/weapon_registry.c \
-              src/render/character_transform.c src/render/weapon_grip.c \
-              src/render/arm_placement.c \
-              src/gameplay/weapon_specs.c src/gameplay/weapon_spec.c \
-              src/gameplay/viewmodel_pose.c \
-              src/gameplay/sights.c \
-              src/render/skinned_model_glb.c src/render/skinned_pose.c \
-              src/render/glb.c src/render/stb_image.c src/core/json.c
-
-# Where the scabbard is worn and whether the sword in it agrees. Three facts
-# that have to line up and cannot be seen lining up by playing - see
-# tools/sheath_probe.c.
-SHEATH_PROBE := bin/sheath_probe
-SHEATH_PROBE_SRCS := tools/sheath_probe.c src/render/character_transform.c \
-              src/gameplay/weapon_registry.c src/render/static_model_glb.c \
-              src/render/weapon_grip.c \
-              src/render/arm_placement.c src/gameplay/action_track.c \
-              src/render/character_animation.c \
-              src/gameplay/weapon_specs.c src/gameplay/weapon_spec.c \
-              src/gameplay/viewmodel_pose.c src/gameplay/sights.c \
-              src/render/skinned_model_glb.c src/render/skinned_pose.c \
-              src/render/glb.c src/render/stb_image.c src/core/json.c
-
-# What a swing hits: one hit per target, nothing outside the live window, and
-# no tunnelling at speed - three things invisible from the player's chair. See
-# tools/melee_probe.c.
+# Every probe: the target name, the tool that holds its main, and one line each.
+# All of them run from the project root, for the relative model paths the game
+# uses.
+#
+#   probe        the viewmodel's arithmetic - see tools/viewmodel_probe.c
+#   bodyprobe    the character rig's, checked the same way
+#   sheathprobe  where the scabbard is worn and whether the sword agrees
+#   meleeprobe   what a swing hits: once per target, only inside the window
+#   deathprobe   health, death and respawn
+#   specprobe    every weapon says what it is, and its mesh agrees
+PROBE       := bin/viewmodel_probe
+BODY_PROBE  := bin/body_probe
+SHEATH_PROBE:= bin/sheath_probe
 MELEE_PROBE := bin/melee_probe
-MELEE_PROBE_SRCS := tools/melee_probe.c src/gameplay/melee_swing.c \
-              src/gameplay/weapon_registry.c \
-              src/gameplay/weapon.c src/gameplay/traversal.c \
-              src/render/viewmodel_neck.c \
-              src/gameplay/action_track.c src/gameplay/third_person_camera.c \
-              src/gameplay/combatant.c src/gameplay/damage_number.c \
-              src/gameplay/spawn_select.c src/gameplay/arena.c \
-              src/gameplay/weapon_specs.c src/gameplay/weapon_spec.c \
-              src/gameplay/viewmodel_pose.c src/gameplay/sights.c
-
-# Health, death and respawn, checked without a window for the same reason the
-# other two are - and with more need, because nothing in the world can shoot the
-# player yet, so this file and one debug key are the only things that run the
-# loop at all. See tools/death_probe.c.
 DEATH_PROBE := bin/death_probe
-DEATH_PROBE_SRCS := tools/death_probe.c src/gameplay/combatant.c \
-              src/gameplay/damage_number.c src/gameplay/spawn_select.c \
-              src/gameplay/player_combatant.c src/gameplay/arena.c \
-              src/gameplay/player_controller.c src/gameplay/player_locomotion.c \
-              src/gameplay/player_slide.c src/gameplay/player_wallrun.c \
-              src/gameplay/player_wallclimb.c src/gameplay/player_grapple.c \
-              src/gameplay/player_mantle.c src/gameplay/traversal.c
+SPEC_PROBE  := bin/weapon_spec_probe
 
-# The weapon specs, checked without a window: that every weapon says what kind
-# it is and carries the one class half that kind means, that its mesh loads,
-# and that every part name it states exists on that mesh. See
-# tools/weapon_spec_probe.c for why each of those is worth a check.
-SPEC_PROBE := bin/weapon_spec_probe
-SPEC_PROBE_SRCS := tools/weapon_spec_probe.c src/gameplay/weapon_spec.c \
-              src/gameplay/weapon_registry.c \
-              src/gameplay/weapon_specs.c src/gameplay/viewmodel_pose.c \
-              src/gameplay/action_track.c src/gameplay/sights.c \
-              src/render/static_model_glb.c src/render/glb.c \
-              src/render/stb_image.c src/core/json.c
+PROBES := $(PROBE) $(BODY_PROBE) $(SHEATH_PROBE) $(MELEE_PROBE) \
+          $(DEATH_PROBE) $(SPEC_PROBE)
 
-.PHONY: meleeprobe sheathprobe all build clean run probe bodyprobe deathprobe specprobe
+# One recipe for all six. $* is the probe's own source stem.
+bin/%: tools/%.c $(HEADLESS_CORE)
+	@mkdir -p bin
+	$(PROBE_CC) $(PROBE_CFLAGS) $(CPPFLAGS) $< $(HEADLESS_CORE) -o $@ -lm
+
+probe:       $(PROBE);       ./$(PROBE)
+bodyprobe:   $(BODY_PROBE);  ./$(BODY_PROBE)
+sheathprobe: $(SHEATH_PROBE);./$(SHEATH_PROBE)
+meleeprobe:  $(MELEE_PROBE); ./$(MELEE_PROBE)
+deathprobe:  $(DEATH_PROBE); ./$(DEATH_PROBE)
+specprobe:   $(SPEC_PROBE);  ./$(SPEC_PROBE)
+
+# Everything the probes check, in one word. What to run before a commit.
+probes: probe bodyprobe sheathprobe meleeprobe deathprobe specprobe
+
+.PHONY: all build clean run probes \
+        probe bodyprobe sheathprobe meleeprobe deathprobe specprobe
 
 all: $(TARGET)
 
@@ -131,49 +147,7 @@ build: all
 	cp $(TARGET) $(BUILD_DIR)/Game.exe
 	cp -R $(RUNTIME_DIRS) $(BUILD_DIR)/
 
-# Run from the project root: it opens models/animations/UAL1_Standard.glb by a
-# relative path, the same one the game uses.
-probe: $(PROBE_SRCS)
-	@mkdir -p bin
-	$(PROBE_CC) -Wall -Wextra -std=c11 -O1 $(CPPFLAGS) $(PROBE_SRCS) \
-	    -o $(PROBE) -lm
-	./$(PROBE)
-
-# Run from the project root, for the same relative model path the game uses.
-meleeprobe: $(MELEE_PROBE_SRCS)
-	@mkdir -p bin
-	$(PROBE_CC) -Wall -Wextra -std=c11 -O1 $(CPPFLAGS) $(MELEE_PROBE_SRCS) \
-	    -o $(MELEE_PROBE) -lm
-	./$(MELEE_PROBE)
-
-sheathprobe: $(SHEATH_PROBE_SRCS)
-	@mkdir -p bin
-	$(PROBE_CC) -Wall -Wextra -std=c11 -O1 $(CPPFLAGS) $(SHEATH_PROBE_SRCS) \
-	    -o $(SHEATH_PROBE) -lm
-	./$(SHEATH_PROBE)
-
-bodyprobe: $(BODY_PROBE_SRCS)
-	@mkdir -p bin
-	$(PROBE_CC) -Wall -Wextra -std=c11 -O1 $(CPPFLAGS) $(BODY_PROBE_SRCS) \
-	    -o $(BODY_PROBE) -lm
-	./$(BODY_PROBE)
-
-# Run from the project root, like the others.
-specprobe: $(SPEC_PROBE_SRCS)
-	@mkdir -p bin
-	$(PROBE_CC) -Wall -Wextra -std=c11 -O1 $(CPPFLAGS) $(SPEC_PROBE_SRCS) \
-	    -o $(SPEC_PROBE) -lm
-	./$(SPEC_PROBE)
-
-# Run from the project root, like the other two.
-deathprobe: $(DEATH_PROBE_SRCS)
-	@mkdir -p bin
-	$(PROBE_CC) -Wall -Wextra -std=c11 -O1 $(CPPFLAGS) $(DEATH_PROBE_SRCS) \
-	    -o $(DEATH_PROBE) -lm
-	./$(DEATH_PROBE)
-
 clean:
-	rm -rf obj $(TARGET) $(PROBE) $(BODY_PROBE) $(DEATH_PROBE) \
-	    $(SPEC_PROBE) $(SHEATH_PROBE) $(MELEE_PROBE) $(BUILD_DIR)
+	rm -rf obj $(TARGET) $(PROBES) $(BUILD_DIR)
 
 -include $(DEPS)
