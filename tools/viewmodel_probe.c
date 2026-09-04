@@ -22,6 +22,7 @@
 #include "gameplay/weapon_tuning.h"
 #include "gameplay/movement_tuning.h"
 #include "gameplay/viewmodel_pose.h"
+#include "render/arm_geometry.h"
 #include "render/arm_placement.h"
 #include "render/weapon_grip.h"
 #include "render/viewmodel_clip_arms.h"
@@ -1298,208 +1299,42 @@ static void check_reload_shape(const WeaponSpec* spec) {
            "the hand never jumps - every ease reaches its key");
 }
 
-/* --- the arm solve, replicated ---
-   viewmodel_arms.c is the original and cannot be linked here: it opens with
-   GLFW and ends with glPushMatrix. What follows is the same arithmetic against
-   the same rig, and it is worth the duplication for the same reason the
-   placement search was worth splitting out - a wrist is a rotation, and a
-   rotation can be checked without a window. Keep these in step with the
-   originals; the tables are copied deliberately, so a change there that this
-   does not see will show up as this check disagreeing with the game. */
-static const float PROBE_HAND_DIR[WEAPON_HOLD_KIND_COUNT][2][3] = {
-    { { 0.00f, -0.15f, -0.99f }, { 0.30f,  0.10f, -0.95f } },
-    { { 0.00f, -0.15f, -0.99f }, { 0.18f, -0.28f, -0.94f } },
-    { { 0.08f, -0.12f, -0.99f }, { 0.08f, -0.12f, -0.99f } },
-};
-static const float PROBE_PALM_DIR[WEAPON_HOLD_KIND_COUNT][2][3] = {
-    { { -1.00f, -0.20f, 0.00f }, { 0.00f, 0.00f, 0.00f } },
-    { { -1.00f, -0.20f, 0.00f }, { 0.00f, 0.00f, 0.00f } },
-    { { -1.00f, -0.15f, 0.00f }, { -1.00f, -0.15f, 0.00f } },
-};
-static const float PROBE_ELBOW_POLE[3] = {0.55f, -0.78f, 0.30f};
+/* --- the arm solve, against the real thing ---
+   This used to be a second copy of the solver. Its own comment said why:
+   "viewmodel_arms.c is the original and cannot be linked here: it opens with
+   GLFW and ends with glPushMatrix", and the two grip tables were "copied
+   deliberately, so a change there that this does not see will show up as this
+   check disagreeing with the game."
 
-typedef struct {
-    short upper, lower, hand;
-    float upper_axis[3], lower_axis[3], hand_axis[3];
-    float hand_dir[3], palm_axis[3], palm_dir[3];
-    int has_palm;
-    float grip_centre[3];
-    int has_grip;
-    float upper_length, lower_length, side;
-} ProbeArm;
+   That was a fair trade and it was also the wrong way round. A probe holding
+   its own copy of the arithmetic is a probe that passes while the shipped
+   solver is broken - the disagreement it promised to surface only shows up if
+   some OTHER check happens to straddle the two, and none did. Four hundred
+   lines of retyped IK, and the thing being tested was the retyping.
 
-static short probe_find(const Skeleton* s, const char* name) {
-    for (int i = 0; i < s->node_count; ++i)
-        if (strcmp(s->node_names[i], name) == 0) return (short)i;
-    return -1;
-}
+   render/arm_geometry.c is that arithmetic with no state and no GL in it, so
+   it links here now and this calls it: arm_reach, arm_resolve, arm_palm_roll,
+   arm_wrist_from_grip and the rest are the ones the game runs. The grip tables
+   go the same way - weapon_grip_hand_dir and weapon_grip_palm_dir are what
+   both cameras already read.
 
-static int probe_rest_axis(const Skeleton* s, int node, float out[3]) {
-    for (int i = 0; i < s->node_count; ++i) {
-        if (s->parent[i] != node) continue;
-        const float* t = s->bind_local[i].translation;
-        float l = sqrtf(t[0]*t[0] + t[1]*t[1] + t[2]*t[2]);
-        if (l < 1e-6f) continue;
-        out[0] = t[0]/l; out[1] = t[1]/l; out[2] = t[2]/l;
-        return 1;
-    }
-    return 0;
-}
-
-static float probe_bone_length(const Skeleton* s, int node) {
-    const float* t = s->bind_local[node].translation;
-    return sqrtf(t[0]*t[0] + t[1]*t[1] + t[2]*t[2]);
-}
-
-static int probe_resolve(const Skeleton* s, ProbeArm* a, const char* upper,
-                         const char* lower, const char* hand, float side) {
-    a->upper = probe_find(s, upper);
-    a->lower = probe_find(s, lower);
-    a->hand = probe_find(s, hand);
-    if (a->upper < 0 || a->lower < 0 || a->hand < 0) return 0;
-    if (!probe_rest_axis(s, a->upper, a->upper_axis)) return 0;
-    if (!probe_rest_axis(s, a->lower, a->lower_axis)) return 0;
-    if (!probe_rest_axis(s, a->hand, a->hand_axis)) return 0;
-    a->upper_length = probe_bone_length(s, a->lower);
-    a->lower_length = probe_bone_length(s, a->hand);
-    a->side = side;
-    return 1;
-}
-
-static void probe_measure_palm(const Skeleton* s, ProbeArm* a,
-                               const char* index, const char* pinky,
-                               const char* thumb) {
-    a->has_palm = 0;
-    short i = probe_find(s, index), p = probe_find(s, pinky);
-    short t = probe_find(s, thumb);
-    if (i < 0 || p < 0 || t < 0) return;
-    const float* fi = s->bind_local[i].translation;
-    const float* fp = s->bind_local[p].translation;
-    float knuckles[3];
-    for (int c = 0; c < 3; ++c) knuckles[c] = fi[c] - fp[c];
-    float n[3] = {
-        knuckles[1]*a->hand_axis[2] - knuckles[2]*a->hand_axis[1],
-        knuckles[2]*a->hand_axis[0] - knuckles[0]*a->hand_axis[2],
-        knuckles[0]*a->hand_axis[1] - knuckles[1]*a->hand_axis[0],
-    };
-    float l = sqrtf(n[0]*n[0] + n[1]*n[1] + n[2]*n[2]);
-    if (l < 1e-6f) return;
-    for (int c = 0; c < 3; ++c) n[c] /= l;
-    const float* ft = s->bind_local[t].translation;
-    if (n[0]*ft[0] + n[1]*ft[1] + n[2]*ft[2] < 0.0f)
-        for (int c = 0; c < 3; ++c) n[c] = -n[c];
-    memcpy(a->palm_axis, n, sizeof a->palm_axis);
-    a->has_palm = 1;
-}
-
-static void probe_unit(float v[3]) {
-    float l = sqrtf(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
-    if (l > 1e-8f) for (int c = 0; c < 3; ++c) v[c] /= l;
-}
-
-static void probe_hand_basis(const float along[3], const float palm[3],
-                             float u[3], float v[3], float w[3]) {
-    memcpy(u, along, sizeof(float) * 3);
-    probe_unit(u);
-    float dot = palm[0]*u[0] + palm[1]*u[1] + palm[2]*u[2];
-    for (int c = 0; c < 3; ++c) v[c] = palm[c] - u[c]*dot;
-    float l = sqrtf(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
-    if (l < 1e-8f) { v[0] = u[1]; v[1] = -u[0]; v[2] = 0.0f; }
-    probe_unit(v);
-    w[0] = u[1]*v[2] - u[2]*v[1];
-    w[1] = u[2]*v[0] - u[0]*v[2];
-    w[2] = u[0]*v[1] - u[1]*v[0];
-}
-
-/* The fist's own middle, off the mesh - see measure_grip_centre. */
-static void probe_measure_grip(const SkinnedModel* model, const Pose* fist,
-                               SkinnedInstance* skinned, ProbeArm* arm,
-                               const char* hand) {
-    arm->has_grip = 0;
-    arm->grip_centre[0] = arm->grip_centre[1] = arm->grip_centre[2] = 0.0f;
-    if (!arm->has_palm) return;
-    PoseMask owned;
-    if (!skinned_model_mask_subtree(model, hand, &owned)) return;
-    Mat4 hand_global;
-    if (!skinned_model_bone_matrix(model, fist, hand, &hand_global)) return;
-    skinned_model_skin(model, fist, skinned);
-
-    const Skeleton* sk = &model->skeleton;
-    float centre[3] = {0,0,0};
-    int counted = 0;
-    for (int m = 0; m < model->mesh_count && m < skinned->mesh_count; ++m) {
-        const SkinnedMesh* mesh = &model->meshes[m];
-        const SkinnedMeshVertices* posed = &skinned->meshes[m];
-        if (!mesh->joints || !mesh->weights || !posed->vertices) continue;
-        int count = mesh->vertex_count < posed->vertex_count
-                  ? mesh->vertex_count : posed->vertex_count;
-        for (int v = 0; v < count; ++v) {
-            int best = -1; float most = 0.0f;
-            for (int i = 0; i < SKIN_INFLUENCES; ++i) {
-                float w = mesh->weights[v*SKIN_INFLUENCES + i];
-                if (w <= most) continue;
-                most = w; best = mesh->joints[v*SKIN_INFLUENCES + i];
-            }
-            if (best < 0 || best >= sk->joint_count) continue;
-            int node = sk->joint_node[best];
-            if (node < 0 || node >= SKIN_MAX_NODES || !owned.node[node]) continue;
-            const float* p = &posed->vertices[v*SKIN_VERTEX_FLOATS];
-            for (int c = 0; c < 3; ++c) centre[c] += p[c];
-            ++counted;
-        }
-    }
-    if (!counted) return;
-    for (int c = 0; c < 3; ++c) centre[c] /= (float)counted;
-
-    float basis[3][3];
-    for (int c = 0; c < 3; ++c) {
-        float l = sqrtf(hand_global.m[c*4+0]*hand_global.m[c*4+0] +
-                        hand_global.m[c*4+1]*hand_global.m[c*4+1] +
-                        hand_global.m[c*4+2]*hand_global.m[c*4+2]);
-        if (l < 1e-8f) l = 1.0f;
-        for (int r = 0; r < 3; ++r) basis[c][r] = hand_global.m[c*4+r] / l;
-    }
-    float world[3], local[3];
-    for (int c = 0; c < 3; ++c) world[c] = centre[c] - hand_global.m[12+c];
-    for (int c = 0; c < 3; ++c)
-        local[c] = basis[c][0]*world[0] + basis[c][1]*world[1] + basis[c][2]*world[2];
-    float u[3], v[3], w[3];
-    probe_hand_basis(arm->hand_axis, arm->palm_axis, u, v, w);
-    arm->grip_centre[0] = local[0]*u[0] + local[1]*u[1] + local[2]*u[2];
-    arm->grip_centre[1] = local[0]*v[0] + local[1]*v[1] + local[2]*v[2];
-    arm->grip_centre[2] = local[0]*w[0] + local[1]*w[1] + local[2]*w[2];
-    arm->has_grip = 1;
-}
-
-static void probe_wrist_from_grip(const ProbeArm* arm, const float fingers[3],
-                                  const float palm[3], const float grip[3],
-                                  float out[3]) {
-    memcpy(out, grip, sizeof(float) * 3);
-    if (!arm->has_grip) return;
-    float u[3], v[3], w[3];
-    probe_hand_basis(fingers, palm, u, v, w);
-    for (int c = 0; c < 3; ++c)
-        out[c] -= u[c]*arm->grip_centre[0] + v[c]*arm->grip_centre[1] +
-                  w[c]*arm->grip_centre[2];
-}
-
-/* One resolved, measured pair, shared by every check that needs a wrist target.
-   Resolving them per call was fine while the answer was a grip point; now that
-   it depends on the rig's own fist it wants measuring once. */
-static ProbeArm g_probe_arms[2];
+   What is left below is the part that genuinely has no counterpart: the solve
+   is driven by a long-lived struct inside viewmodel_arms.c that a probe cannot
+   have, so walking the two chains is done here. It calls the real bones. */
+static ArmChain g_probe_arms[2];
 static int g_probe_arms_ready = 0;
 
 static int probe_arms_ready(const SkinnedModel* model) {
     if (g_probe_arms_ready) return 1;
     const Skeleton* sk = &model->skeleton;
-    if (!probe_resolve(sk, &g_probe_arms[0], "upperarm_r", "lowerarm_r",
+    if (!arm_resolve(sk, &g_probe_arms[0], "upperarm_r", "lowerarm_r",
                        "hand_r", -1.0f) ||
-        !probe_resolve(sk, &g_probe_arms[1], "upperarm_l", "lowerarm_l",
+        !arm_resolve(sk, &g_probe_arms[1], "upperarm_l", "lowerarm_l",
                        "hand_l", 1.0f))
         return 0;
-    probe_measure_palm(sk, &g_probe_arms[0], "index_01_r", "pinky_01_r",
+    arm_measure_palm(sk, &g_probe_arms[0], "index_01_r", "pinky_01_r",
                        "thumb_01_r");
-    probe_measure_palm(sk, &g_probe_arms[1], "index_01_l", "pinky_01_l",
+    arm_measure_palm(sk, &g_probe_arms[1], "index_01_l", "pinky_01_l",
                        "thumb_01_l");
     Pose fist;
     int clip = -1;
@@ -1513,7 +1348,7 @@ static int probe_arms_ready(const SkinnedModel* model) {
     if (!skinned_ready && !skinned_instance_init(&skinned, model)) return 0;
     skinned_ready = 1;
     for (int a = 0; a < 2; ++a)
-        probe_measure_grip(model, &fist, &skinned, &g_probe_arms[a], hand[a]);
+        arm_measure_grip_centre(model, &fist, &skinned, &g_probe_arms[a], hand[a]);
     g_probe_arms_ready = 1;
     return 1;
 }
@@ -1534,10 +1369,10 @@ static void probe_sheathed_targets(const WeaponSpec* spec,
     for (int a = 0; a < 2; ++a) {
         const Mat4* on = a ? saya : sword;
         float fingers[3], palm[3], grip[3];
-        mat4_transform_direction(on, PROBE_HAND_DIR[spec->hold][a], fingers);
-        mat4_transform_direction(on, PROBE_PALM_DIR[spec->hold][a], palm);
+        mat4_transform_direction(on, weapon_grip_hand_dir(spec->hold, a), fingers);
+        mat4_transform_direction(on, weapon_grip_palm_dir(spec->hold, a), palm);
         mat4_transform_point(on, a ? melee->saya_grip : spec->grip_right, grip);
-        probe_wrist_from_grip(&g_probe_arms[a], fingers, palm, grip,
+        arm_wrist_from_grip(&g_probe_arms[a], fingers, palm, grip,
                               targets[a]);
     }
 }
@@ -1551,104 +1386,15 @@ static void probe_wrist_targets(const WeaponSpec* spec,
        of this. */
     memcpy(targets[1], grip[1], sizeof(float) * 3);
     float fingers[3], palm[3];
-    viewmodel_pose_transform_direction(pose, PROBE_HAND_DIR[spec->hold][0],
+    viewmodel_pose_transform_direction(pose, weapon_grip_hand_dir(spec->hold, 0),
                                        fingers);
-    viewmodel_pose_transform_direction(pose, PROBE_PALM_DIR[spec->hold][0],
+    viewmodel_pose_transform_direction(pose, weapon_grip_palm_dir(spec->hold, 0),
                                        palm);
-    probe_wrist_from_grip(&g_probe_arms[0], fingers, palm, grip[0],
+    arm_wrist_from_grip(&g_probe_arms[0], fingers, palm, grip[0],
                           targets[0]);
 }
 
-static void probe_point_bone(const Skeleton* s, const Mat4 g[], int node,
-                             const float axis[3], const float target[3],
-                             Pose* pose) {
-    float l = sqrtf(target[0]*target[0] + target[1]*target[1] +
-                    target[2]*target[2]);
-    if (l < 1e-6f) return;
-    float dir[3] = {target[0]/l, target[1]/l, target[2]/l};
-    int parent = s->parent[node];
-    float local[3] = {dir[0], dir[1], dir[2]};
-    if (parent >= 0) {
-        const Mat4* p = &g[parent];
-        for (int c = 0; c < 3; ++c) {
-            float sc = sqrtf(p->m[c*4]*p->m[c*4] + p->m[c*4+1]*p->m[c*4+1] +
-                             p->m[c*4+2]*p->m[c*4+2]);
-            if (sc < 1e-8f) sc = 1.0f;
-            local[c] = (p->m[c*4]*dir[0] + p->m[c*4+1]*dir[1] +
-                        p->m[c*4+2]*dir[2]) / sc;
-        }
-    }
-    quat_between(axis, local, pose->local[node].rotation);
-}
-
-static float probe_palm_roll(const Skeleton* s, const Mat4 g[], int node,
-                             const ProbeArm* arm, const Pose* pose) {
-    if (!arm->has_palm) return 0.0f;
-    float want[3] = {arm->palm_dir[0], arm->palm_dir[1], arm->palm_dir[2]};
-    if (want[0]*want[0] + want[1]*want[1] + want[2]*want[2] < 1e-8f) return 0.0f;
-    float axis[3] = {arm->hand_dir[0], arm->hand_dir[1], arm->hand_dir[2]};
-    float l = sqrtf(axis[0]*axis[0] + axis[1]*axis[1] + axis[2]*axis[2]);
-    if (l < 1e-6f) return 0.0f;
-    for (int c = 0; c < 3; ++c) axis[c] /= l;
-    const Transform* local = &pose->local[node];
-    Mat4 m = mat4_from_trs(local->translation, local->rotation, local->scale);
-    int parent = s->parent[node];
-    Mat4 hand = parent < 0 ? m : mat4_multiply(g[parent], m);
-    float have[3];
-    mat4_transform_direction(&hand, arm->palm_axis, have);
-    float ah = have[0]*axis[0] + have[1]*axis[1] + have[2]*axis[2];
-    float aw = want[0]*axis[0] + want[1]*axis[1] + want[2]*axis[2];
-    for (int c = 0; c < 3; ++c) { have[c] -= axis[c]*ah; want[c] -= axis[c]*aw; }
-    float hl = sqrtf(have[0]*have[0] + have[1]*have[1] + have[2]*have[2]);
-    float wl = sqrtf(want[0]*want[0] + want[1]*want[1] + want[2]*want[2]);
-    if (hl < 1e-4f || wl < 1e-4f) return 0.0f;
-    for (int c = 0; c < 3; ++c) { have[c] /= hl; want[c] /= wl; }
-    float cross[3] = {
-        have[1]*want[2] - have[2]*want[1],
-        have[2]*want[0] - have[0]*want[2],
-        have[0]*want[1] - have[1]*want[0],
-    };
-    float sine = cross[0]*axis[0] + cross[1]*axis[1] + cross[2]*axis[2];
-    float cosine = have[0]*want[0] + have[1]*want[1] + have[2]*want[2];
-    return atan2f(sine, cosine) / MATH_DEG_TO_RAD;
-}
-
-static void probe_reach(const float sh[3], const float t[3], float ul, float ll,
-                        float side, float ud[3], float ld[3]) {
-    float to[3];
-    for (int c = 0; c < 3; ++c) to[c] = t[c] - sh[c];
-    float d = sqrtf(to[0]*to[0] + to[1]*to[1] + to[2]*to[2]);
-    if (d < 1e-5f) { d = 1e-5f; to[1] = -d; }
-    float axis[3];
-    for (int c = 0; c < 3; ++c) axis[c] = to[c] / d;
-    float shortest = fabsf(ul - ll) + 1e-4f, longest = ul + ll - 1e-4f;
-    if (d < shortest) d = shortest;
-    if (d > longest) d = longest;
-    float cosine = (ul*ul + d*d - ll*ll) / (2.0f * ul * d);
-    float angle = acosf(clampf(cosine, -1.0f, 1.0f));
-    float pole[3] = {PROBE_ELBOW_POLE[0]*side, PROBE_ELBOW_POLE[1],
-                     PROBE_ELBOW_POLE[2]};
-    float dot = pole[0]*axis[0] + pole[1]*axis[1] + pole[2]*axis[2];
-    float bend[3];
-    for (int c = 0; c < 3; ++c) bend[c] = pole[c] - axis[c]*dot;
-    float l = sqrtf(bend[0]*bend[0] + bend[1]*bend[1] + bend[2]*bend[2]);
-    if (l < 1e-5f) { bend[0] = axis[1]; bend[1] = -axis[0]; bend[2] = 0.0f;
-                     l = sqrtf(bend[0]*bend[0] + bend[1]*bend[1]);
-                     if (l < 1e-5f) { bend[0] = 1.0f; bend[1] = bend[2] = 0.0f;
-                                      l = 1.0f; } }
-    for (int c = 0; c < 3; ++c) bend[c] /= l;
-    float elbow[3];
-    for (int c = 0; c < 3; ++c) {
-        ud[c] = axis[c]*cosf(angle) + bend[c]*sinf(angle);
-        elbow[c] = sh[c] + ud[c]*ul;
-        ld[c] = t[c] - elbow[c];
-    }
-    l = sqrtf(ld[0]*ld[0] + ld[1]*ld[1] + ld[2]*ld[2]);
-    if (l < 1e-5f) memcpy(ld, ud, sizeof(float) * 3);
-    else for (int c = 0; c < 3; ++c) ld[c] /= l;
-}
-
-static void probe_solve_arms(const SkinnedModel* model, ProbeArm arms[2],
+static void probe_solve_arms(const SkinnedModel* model, ArmChain arms[2],
                              const float targets[2][3], Pose* pose,
                              Mat4 out[SKIN_MAX_NODES]) {
     const Skeleton* s = &model->skeleton;
@@ -1657,7 +1403,7 @@ static void probe_solve_arms(const SkinnedModel* model, ProbeArm arms[2],
     for (int i = 0; i < s->node_count; ++i) {
         int node = s->order[i];
         for (int a = 0; a < 2; ++a) {
-            const ProbeArm* arm = &arms[a];
+            const ArmChain* arm = &arms[a];
             if (node == arm->upper) {
                 int p = s->parent[node];
                 float sh[3] = {0, 0, 0};
@@ -1667,15 +1413,15 @@ static void probe_solve_arms(const SkinnedModel* model, ProbeArm arms[2],
                                              pose->local[node].translation, off);
                     for (int c = 0; c < 3; ++c) sh[c] = global[p].m[12+c] + off[c];
                 }
-                probe_reach(sh, targets[a], arm->upper_length, arm->lower_length,
+                arm_reach(sh, targets[a], arm->upper_length, arm->lower_length,
                             arm->side, ud[a], ld[a]);
-                probe_point_bone(s, global, node, arm->upper_axis, ud[a], pose);
+                arm_point_bone(s, global, node, arm->upper_axis, ud[a], pose);
             } else if (node == arm->lower) {
-                probe_point_bone(s, global, node, arm->lower_axis, ld[a], pose);
+                arm_point_bone(s, global, node, arm->lower_axis, ld[a], pose);
             } else if (node == arm->hand) {
-                probe_point_bone(s, global, node, arm->hand_axis, arm->hand_dir,
+                arm_point_bone(s, global, node, arm->hand_axis, arm->hand_dir,
                                  pose);
-                float roll = probe_palm_roll(s, global, node, arm, pose);
+                float roll = arm_palm_roll(s, global, node, arm, pose);
                 if (fabsf(roll) > 0.001f) {
                     int p = s->parent[node];
                     float local_axis[3] = {arm->hand_dir[0], arm->hand_dir[1],
@@ -1721,7 +1467,7 @@ static void probe_gun_basis(const ViewmodelPose* pose, float basis[3][3]) {
         float p[3];
         viewmodel_pose_transform_point(pose, axis[a], p);
         for (int c = 0; c < 3; ++c) basis[a][c] = p[c] - origin[c];
-        probe_unit(basis[a]);
+        arm_direction_normalize(basis[a]);
     }
 }
 
@@ -1730,12 +1476,12 @@ static int wrist_in_gun_frame(const WeaponSpec* spec, const SkinnedModel* model,
                               const ArmRig* rig, float sprint, float ads,
                               float palm_out[3], float fingers_out[3]) {
     const Skeleton* sk = &model->skeleton;
-    ProbeArm arms[2];
-    if (!probe_resolve(sk, &arms[0], "upperarm_r", "lowerarm_r", "hand_r", -1.0f) ||
-        !probe_resolve(sk, &arms[1], "upperarm_l", "lowerarm_l", "hand_l", 1.0f))
+    ArmChain arms[2];
+    if (!arm_resolve(sk, &arms[0], "upperarm_r", "lowerarm_r", "hand_r", -1.0f) ||
+        !arm_resolve(sk, &arms[1], "upperarm_l", "lowerarm_l", "hand_l", 1.0f))
         return 0;
-    probe_measure_palm(sk, &arms[0], "index_01_r", "pinky_01_r", "thumb_01_r");
-    probe_measure_palm(sk, &arms[1], "index_01_l", "pinky_01_l", "thumb_01_l");
+    arm_measure_palm(sk, &arms[0], "index_01_r", "pinky_01_r", "thumb_01_r");
+    arm_measure_palm(sk, &arms[1], "index_01_l", "pinky_01_l", "thumb_01_l");
 
     ViewmodelPose vp;
     weapon_spec_rest_pose(spec, sprint, 0.0f, ads, &vp);
@@ -1762,8 +1508,8 @@ static int wrist_in_gun_frame(const WeaponSpec* spec, const SkinnedModel* model,
     float basis[3][3];
     probe_gun_basis(&vp, basis);
     for (int a = 0; a < 2; ++a) {
-        const float* want[2] = {PROBE_HAND_DIR[spec->hold][a],
-                                PROBE_PALM_DIR[spec->hold][a]};
+        const float* want[2] = {weapon_grip_hand_dir(spec->hold, a),
+                                weapon_grip_palm_dir(spec->hold, a)};
         float* into[2] = {arms[a].hand_dir, arms[a].palm_dir};
         for (int w = 0; w < 2; ++w) {
             if (want[w][0] == 0.0f && want[w][1] == 0.0f && want[w][2] == 0.0f) {
@@ -1797,13 +1543,13 @@ static int wrist_in_gun_frame(const WeaponSpec* spec, const SkinnedModel* model,
     for (int w = 0; w < 2; ++w) {
         float model_dir[3];
         mat4_transform_direction(h, local[w], model_dir);
-        probe_unit(model_dir);
+        arm_direction_normalize(model_dir);
         float camera_dir[3];
         arm_placement_rig_to_camera(model_dir, p.blade, camera_dir);
         for (int c = 0; c < 3; ++c)
             out[w][c] = basis[c][0]*camera_dir[0] + basis[c][1]*camera_dir[1] +
                         basis[c][2]*camera_dir[2];
-        probe_unit(out[w]);
+        arm_direction_normalize(out[w]);
     }
     return 1;
 }
