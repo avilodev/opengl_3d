@@ -79,10 +79,17 @@ typedef struct {
    what a paused game wants.
 
    `visible` is whether the body will be drawn at all - it is not, in first
-   person, and it is not for a body behind you. The clip clock runs either way,
-   so the pose is already right the frame the view switches back, but the eight
-   thousand vertex transforms behind it are skipped for a body nobody can
-   see. */
+   person, and it is not for a body behind you. It skips the SKINNING and
+   nothing else: the eight thousand vertex transforms are for looking at, so a
+   body nobody can see does not pay for them.
+
+   The clip clock and the POSE both run either way, and the pose has to. It is
+   not a step on the way to a drawing - it is where this body's hands are, and
+   things outside the renderer read it: a melee weapon's hit volume is swept
+   off the hand character_weapon_world takes from it. Left on the skipped side
+   of this flag, as it was, the hand in first person was the bind pose on every
+   frame - so the sword swung on screen and cut a stationary segment beside the
+   player's boot. */
 void character_renderer_update(CharacterLibrary* library, CharacterInstance* instance,
                                const CharacterVisualState* state, float delta_time,
                                int visible);

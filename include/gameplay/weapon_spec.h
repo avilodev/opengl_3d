@@ -144,6 +144,7 @@ typedef struct {
    frame and the next. Stated here rather than derived from the mesh bounds
    because a bounding box includes the grip and the guard, and a sword that
    cut with its handle would be a surprise nobody debugged quickly. */
+
 typedef struct MeleeSpec {
     float blade_base[3];
     float blade_tip[3];
@@ -194,6 +195,7 @@ typedef struct MeleeSpec {
        camera behind the body; in first person the same motion needs bringing
        toward the eye. Camera space, same axes as view_right/view_down. */
     float view_clip_offset[3];
+
 } MeleeSpec;
 
 /* Which clips a body plays while holding this weapon. Names and not indices,
@@ -215,7 +217,14 @@ typedef enum {
     WEAPON_HOLD_TWO_POINT,
     /* Two hands at one place, the support hand wrapped around the firing one.
        A pistol, which has no forward furniture to hold. */
-    WEAPON_HOLD_HANDS_TOGETHER
+    WEAPON_HOLD_HANDS_TOGETHER,
+    /* Two hands in a row along one grip, both wrapped around the same shaft.
+       A katana's tsuka, where the forward hand sits under the guard and the
+       rear one at the butt - which is a different thing from a rifle's two
+       points, because there is no pistol grip for either hand to close on and
+       both wrists do the same job. */
+    WEAPON_HOLD_HILT,
+    WEAPON_HOLD_KIND_COUNT
 } WeaponHoldKind;
 
 typedef struct {
@@ -256,6 +265,20 @@ typedef struct {
     float view_down;
     float view_forward;
     float view_fov;
+
+    /* How much of the head's pitch this weapon's carry gives up to the neck,
+       0 to 1. See render/viewmodel_neck.h for what the neck is; this is the
+       one number per weapon that says how much of it a given weapon wants.
+
+       A scalar and not a flag, deliberately. The relative motion is most of
+       what makes a first-person view read as a body, and it is also a cost:
+       this game has a grapple and a wallrun and the player aims upward
+       constantly, which is exactly when a following viewmodel leaves the
+       frame. That cost is not the same for a katana as for a carbine, so it is
+       stated per weapon. Zero is exactly the welded viewmodel that shipped
+       before the neck existed, which makes retreating from it one number here
+       rather than a revert. */
+    float neck_follow;
 
     /* --- the hold ---
        Where the hands close on this gun, in the model's own space: +x right,

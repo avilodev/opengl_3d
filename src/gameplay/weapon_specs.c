@@ -334,46 +334,6 @@ static const MeleeSpec KATANA_MELEE = {
        body forward hid the arms as well. Applied to the ARMS as well as the
        sword - a shift given to one and not the other is how a hilt ends up
        floating in front of a fist reaching for where it used to be. */
-    .carries = {
-        /* Camera space: +x right, +y up, -z forward, rotations applied about
-           the sword's own origin as yaw, then pitch, then roll. The origin is
-           the middle of the tsuka, so these place the HANDS and the blade
-           follows out of them - a positive pitch raises the tip, because the
-           mesh runs -z toward it.
-
-           [MELEE_CARRY_REST] Down at the side, tip angled at the floor. Off
-           the bottom of the frame at 0.58 below the eye against a 43 degree
-           projection, and off it because that is where a hand at a hip is:
-           VIEWMODEL_HIP_BELOW_EYE puts a belt 0.75 down, and this is a hand
-           resting a little above one. Nothing here is aiming at invisible. */
-        [MELEE_CARRY_REST] = {
-            0.17f, -0.58f, -0.26f,
-            -28.0f, 4.0f, 0.0f,
-            0.0f, 0.0f,
-        },
-        /* [MELEE_CARRY_GUARD] The one the player sees. Hands low and forward,
-           at about the height the rifle's receiver sits, and the blade rising
-           left across the frame - the tip lands a fifth of the way left of
-           centre and three quarters of the way up, which is a blade that
-           reads as a blade rather than as a bar down the middle of the
-           screen. */
-        [MELEE_CARRY_GUARD] = {
-            0.09f, -0.16f, -0.42f,
-            34.0f, 18.0f, 8.0f,
-            0.0f, 0.0f,
-        },
-        /* [MELEE_CARRY_MOMENTUM] Canted across and out of the way. A wall run
-           already banks the view sixteen degrees and a slide is a low fast
-           read of the floor; a blade held up through the middle of either is a
-           blade across the thing the player is trying to see. So the tip goes
-           left and level and the hands stay right, which keeps the sword on
-           screen without it being in the way. */
-        [MELEE_CARRY_MOMENTUM] = {
-            0.14f, -0.26f, -0.36f,
-            10.0f, 46.0f, -22.0f,
-            0.0f, 0.0f,
-        },
-    },
 
     .draw_track = &KATANA_DRAW,
     .sheathe_track = &KATANA_SHEATHE,

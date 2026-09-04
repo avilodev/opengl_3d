@@ -6,8 +6,10 @@
 /* Past this a body is not skinned. The arena's diagonal is a little over two
    hundred metres and every rig is eight thousand vertices, so a set of bodies
    scattered across the map is most of a million vertex transforms a frame spent
-   on figures a handful of pixels tall. The clip clock still runs - see
-   character_renderer_update - so nothing pops when one comes back into range. */
+   on figures a handful of pixels tall. The clip clock and the pose both still
+   run - see character_renderer_update, where only the skinning is behind this -
+   so nothing pops when one comes back into range, and a body out of range still
+   knows where its own hands are. */
 #define COMBATANT_SKIN_RANGE 150.0f
 
 /* How far behind the camera still counts as visible, as a cosine. Generous on
