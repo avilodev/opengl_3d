@@ -4,6 +4,8 @@
 #include "gameplay/traversal.h"
 #include "render/weapon_renderer.h"
 #include "render/viewmodel_arms.h"
+#include "render/viewmodel_neck.h"
+#include "render/character_animation.h"
 #include "render/weapon_model.h"
 #include "render/primitives.h"
 #include "utils/math_utils.h"
@@ -267,15 +269,26 @@ static int scope_disc(const ThirdPersonCamera* camera, const Weapon* weapon,
        circle floating over it reads as an artefact rather than as a sight. */
     if (weapon->ads < 0.10f) return 0;
 
-    float sx, sy, sz;
-    weapon_sight_center(weapon, player, &sx, &sy, &sz);
-    /* Match the viewmodel's camera-space cant so the stencil window remains
-       attached to the physical optic throughout a lean. */
-    float lean_angle = player->lean * VIEWMODEL_LEAN_ROLL * MATH_DEG_TO_RAD;
-    float rotated_x = sx * cosf(lean_angle) - sy * sinf(lean_angle);
-    float rotated_y = sx * sinf(lean_angle) + sy * cosf(lean_angle);
-    sx = rotated_x;
-    sy = rotated_y;
+    float center[3];
+    weapon_sight_center(weapon, player, &center[0], &center[1], &center[2]);
+    /* Through the same neck the viewmodel is drawn through, so the stencil
+       window stays on the physical optic - the cant of a lean, and the pitch of
+       a body the eye has turned away from. Asked of the module rather than
+       recomposed here: this used to be a hand-rolled cos/sin pair, one of three
+       copies of the lean, and the failure a fourth copy buys is a magnified
+       circle sliding off the glass it is a window into.
+
+       The neck is nearly always zero by the time this runs - it fades out with
+       the aim, and nothing below ads 0.10 draws a scope at all - which is the
+       argument for taking it through the same function rather than for leaving
+       it out. */
+    float view_pitch;
+    third_person_camera_view_angles(camera, NULL, &view_pitch, NULL);
+    ViewmodelNeck neck;
+    viewmodel_neck_build(&neck, weapon->spec, view_pitch, player->lean,
+                         weapon->ads);
+    viewmodel_neck_transform_point(&neck, center, center);
+    float sx = center[0], sy = center[1], sz = center[2];
     float view_fov = lerpf(weapon->spec->view_fov, weapon_spec_view_ads_fov(weapon->spec),
                            weapon->ads);
     project_viewmodel_point(sx, sy, sz, view_fov, center_x, center_y);
@@ -324,6 +337,13 @@ void renderer3d_draw(const ThirdPersonCamera* camera, const PlayerController* pl
        advance their clocks twice on exactly the frames a scope was up. */
     character_renderer_update(characters, body, body_state, delta_time,
                               draw_body);
+    /* The body's turn, handed to the viewmodel's neck. Here because this is the
+       line that just advanced it, and ONCE because three consumers read it and a
+       second opinion is the defect viewmodel_neck.h exists to prevent. The pose
+       is composed whatever `draw_body` says - see character_renderer.c - so this
+       is live in first person, which is the only place it is used. */
+    if (body) viewmodel_neck_set_look_yaw(
+        character_animation_look_yaw(&body->animation));
     if (combatants && combatant_bodies) {
         float eye[3], look[3];
         camera_position(camera, player, eye, look);

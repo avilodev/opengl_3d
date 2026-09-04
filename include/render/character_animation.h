@@ -234,6 +234,15 @@ void character_animation_set_grip(CharacterAnimation* animation,
    otherwise. Read after the update; before the first one it is zero. */
 float character_animation_body_yaw(const CharacterAnimation* animation);
 
+/* The head's yaw relative to the chest, in degrees, positive to the left.
+
+   Public because FIRST person wants it. With the camera inside the head, this
+   is how far the body has been left behind by a turn - which is exactly what
+   the viewmodel's neck is, and it is computed here whichever camera is up: the
+   pose is composed whatever `visible` says, for the reasons character_renderer.c
+   sets out. See render/viewmodel_neck.h. */
+float character_animation_look_yaw(const CharacterAnimation* animation);
+
 /* Writes the pose the body should hold this frame. */
 void character_animation_pose(const CharacterAnimation* animation,
                               const SkinnedModel* model, Pose* out);

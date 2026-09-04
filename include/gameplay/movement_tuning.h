@@ -93,6 +93,34 @@
 #define VIEW_LEAN_OFFSET 0.32f
 #define VIEWMODEL_LEAN_ROLL 9.0f
 
+/* How far the head turns on the neck before the back has to join in.
+
+   The other body-relative rotation of the viewmodel, and here beside the lean
+   because they are the same family and get composed together - see
+   render/viewmodel_neck.h. Forty-five degrees is roughly a neck's own range in
+   pitch; past it a person is not craning further, they are leaning their whole
+   back, and a leaning back carries the arms with it rather than leaving them
+   behind. Used as the scale of a saturation and not as a clamp, so it is where
+   the curve flattens rather than where it stops. */
+#define VIEWMODEL_HEAD_PITCH_LIMIT 45.0f
+
+/* And how far the drawn body may lag a head that has TURNED, in degrees.
+
+   Much the shorter of the two, and not because a neck yaws less than it
+   pitches - it yaws considerably more. It is that yaw is the axis the body
+   answers on. Pitch is absolute and the torso never catches up: look at the
+   ceiling and stay there and the head stays craned, so its limit is genuinely
+   where a neck runs out and a spine takes over. A turn is different - the chest
+   comes round and the feet step, and the offset this scales collapses to
+   nothing within a fraction of a second whatever the player does. So what it is
+   sizing is not a range of motion but how much of a turn is allowed to SHOW
+   while the body catches up. Longer, and the weapon reads as lagging on a
+   string rather than as carried by someone who turned their head first.
+
+   Used as the scale of a saturation and not as a clamp, exactly as the pitch
+   limit is: a corner here would land in the middle of every mouse movement. */
+#define VIEWMODEL_NECK_YAW_LIMIT 26.0f
+
 /* How far below the eye a hip is, for the things worn on one. First person has
    no body to hang a scabbard off, so the belt is measured from the camera
    instead - which is the same measurement, taken from the other end. Roughly

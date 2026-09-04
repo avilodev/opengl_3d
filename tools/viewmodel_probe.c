@@ -2294,6 +2294,29 @@ static void check_neck(const WeaponSpec* spec, const SkinnedModel* model) {
           viewmodel_neck_head_pitch(-37.0f), -viewmodel_neck_head_pitch(37.0f),
           1e-6f);
 
+    /* The yaw, which is the same saturation on a much shorter rope.
+
+       Shorter not because a neck yaws less than it pitches - it yaws more - but
+       because yaw is the axis the BODY answers on. The chest comes round and
+       the feet step, so the offset this shapes collapses on its own within a
+       fraction of a second; what it is sizing is only how much of a turn is
+       allowed to show while that happens. A long rope here reads as the sword
+       lagging on a string rather than as a body catching up. */
+    check("a glance of 3 degrees is all neck", viewmodel_neck_head_yaw(3.0f),
+          3.0f, 0.02f);
+    float yaw40 = viewmodel_neck_head_yaw(40.0f);
+    float yaw85 = viewmodel_neck_head_yaw(85.0f);
+    printf("   the head leads by %.1f degrees at a glance of 40, %.1f at 85\n",
+           yaw40, yaw85);
+    expect(yaw85 < VIEWMODEL_NECK_YAW_LIMIT,
+           "the yaw never arrives at its own limit either");
+    expect(yaw85 - yaw40 > 0.0f, "and still moves up there, so no corner");
+    expect(VIEWMODEL_NECK_YAW_LIMIT < VIEWMODEL_HEAD_PITCH_LIMIT,
+           "and it is the shorter of the two, because the body answers on it");
+    check("square is square", viewmodel_neck_head_yaw(0.0f), 0.0f, 1e-6f);
+    check("and a glance left is the mirror of one right",
+          viewmodel_neck_head_yaw(-40.0f), -yaw40, 1e-6f);
+
     /* What it does to the gun. The sign is the whole point: the body pitched
        DOWN relative to a camera that pitched up, so a look at the sky drops the
        gun out of the bottom of the frame and a look at the floor lifts the
@@ -2320,6 +2343,22 @@ static void check_neck(const WeaponSpec* spec, const SkinnedModel* model) {
        that did NOT do this would be a neck of zero. */
     WeaponSpec full = *spec;
     full.neck_follow = 1.0f;
+
+    /* The yaw's sign, which is the same argument the pitch's is: the torso did
+       not move, so relative to a head that turned left the body is to the
+       right. Against the full-follow spec, so the scalar is not hiding it. */
+    viewmodel_neck_set_look_yaw(30.0f);
+    {
+        ViewmodelNeck turned;
+        viewmodel_neck_build(&turned, &full, 0.0f, 0.0f, 0.0f);
+        check("the drawn body lags a head that turned",
+              turned.yaw, -viewmodel_neck_head_yaw(30.0f), 1e-5f);
+        ViewmodelNeck aimed;
+        viewmodel_neck_build(&aimed, &full, 0.0f, 0.0f, 1.0f);
+        check("and at full aim the turn is welded out like everything else",
+              aimed.yaw, 0.0f, 1e-6f);
+    }
+    viewmodel_neck_set_look_yaw(0.0f);
     expect(!neck_gun_point(&full, muzzle, 60.0f, 0.0f, up) ||
            !neck_in_frame(up),
            "at full follow, a look at the sky takes the gun out of frame");
@@ -2386,6 +2425,8 @@ static void check_neck(const WeaponSpec* spec, const SkinnedModel* model) {
        used to hand-roll for the lean - which is the shape the neck would have
        been copied into three more times, and the reason it was not. */
     int agree = 1, reported = 0;
+    for (float glance = -60.0f; glance <= 60.0f; glance += 60.0f) {
+    viewmodel_neck_set_look_yaw(glance);
     for (float pitch = -75.0f; pitch <= 75.0f; pitch += 25.0f) {
         for (float lean = -1.0f; lean <= 1.0f; lean += 1.0f) {
             ViewmodelNeck neck;
@@ -2393,13 +2434,22 @@ static void check_neck(const WeaponSpec* spec, const SkinnedModel* model) {
             const float local[3] = {0.21f, -0.13f, -0.47f};
 
             float p = neck.pitch * MATH_DEG_TO_RAD;
+            float y = neck.yaw * MATH_DEG_TO_RAD;
             float r = neck.roll * MATH_DEG_TO_RAD;
             float q[3];
             for (int c = 0; c < 3; ++c) q[c] = local[c] - neck.pivot[c];
+            /* Pitch first and yaw around it, which is the order the matrix
+               composes them in: the turn is low in the neck and the nod happens
+               at the skull on top of it. */
+            float nodded[3] = {
+                q[0],
+                q[1] * cosf(p) - q[2] * sinf(p),
+                q[1] * sinf(p) + q[2] * cosf(p),
+            };
             float want[3] = {
-                q[0] + neck.pivot[0],
-                q[1] * cosf(p) - q[2] * sinf(p) + neck.pivot[1],
-                q[1] * sinf(p) + q[2] * cosf(p) + neck.pivot[2],
+                nodded[0] * cosf(y) + nodded[2] * sinf(y) + neck.pivot[0],
+                nodded[1] + neck.pivot[1],
+                -nodded[0] * sinf(y) + nodded[2] * cosf(y) + neck.pivot[2],
             };
             float rolled[3] = {want[0] * cosf(r) - want[1] * sinf(r),
                                want[0] * sinf(r) + want[1] * cosf(r),
@@ -2424,6 +2474,8 @@ static void check_neck(const WeaponSpec* spec, const SkinnedModel* model) {
             }
         }
     }
+    }
+    viewmodel_neck_set_look_yaw(0.0f);
     expect(agree, "the drawn matrix and the transformed point are one rotation");
 }
 

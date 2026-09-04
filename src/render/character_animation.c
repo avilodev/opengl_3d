@@ -521,6 +521,10 @@ float character_animation_body_yaw(const CharacterAnimation* animation) {
     return animation ? animation->body_yaw : 0.0f;
 }
 
+float character_animation_look_yaw(const CharacterAnimation* animation) {
+    return animation ? animation->look_yaw : 0.0f;
+}
+
 static float horizontal_speed(const CharacterVisualState* state) {
     return sqrtf(state->velocity_x * state->velocity_x +
                  state->velocity_z * state->velocity_z);
