@@ -3,3 +3,4 @@ bin/
 *.blend
 *.blend1
 run.log
+__pycache__/

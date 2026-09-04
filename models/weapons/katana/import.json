@@ -1,0 +1,30 @@
+{
+  "generator": "tools/katana_to_glb.py",
+  "source": "source.fbx",
+  "output": "katana.glb",
+  "textures": "textures",
+
+  "_scabbard_output": "The scabbard leaves in a file of its own. It is a separate object in every sense that matters at draw time - worn on the hip while the sword is in the hand, and left behind on the hip while the sword is swung - and two meshes with two origins is the only shape in which those two things can be posed independently. Splitting it here rather than hiding it at draw time also means the sword's own origin and bounds stop counting a part that is not attached to it.",
+  "scabbard_output": "katana_saya.glb",
+
+  "_overall_length": "Butt of the grip to the tip of the blade, in metres. A katana runs about a metre over all - a 70cm nagasa on a 26cm tsuka - and every other dimension of the model is in proportion to that. The blade that comes out of it is 0.79m, which is long for the real thing and about right for whatever this one is.",
+  "overall_length": 1.02,
+  "length_axis": 2,
+
+  "_axes": "The viewmodel's +x, +y and -z, as axes of the file. A half turn about the vertical: the blade points down -Z, which is where the camera looks, and the grip ends up nearest the eye.",
+  "axes": ["-x", "+y", "-z"],
+
+  "max_texture": 1024,
+
+  "_grip": "The wrapped grip. Its bounding box is the origin, and its length is the check that the scale is sane, so it is named rather than guessed at.",
+  "grip": "BladesPart5",
+
+  "_scabbard": "Modelled as part of the same mesh and parked alongside the sword rather than around it, which is why it is split out with an origin of its own rather than drawn where the artist left it.",
+  "scabbard": "KatanaCover",
+
+  "_texture_pattern": "The artist's naming, regular enough to derive rather than tabulate.",
+  "texture_pattern": "scifi katana_%s_BaseColor.png",
+
+  "_untextured": "White-ish, so the map is what is seen. A material whose map is missing keeps this and draws flat rather than drawing black.",
+  "untextured": [0.72, 0.72, 0.74, 1.0]
+}

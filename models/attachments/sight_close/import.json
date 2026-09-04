@@ -1,0 +1,33 @@
+{
+  "generator": "tools/scope_to_glb.py",
+  "source": "source.fbx",
+  "output": "sight_close.glb",
+  "textures": "textures",
+
+  "_overall_length": "Front of the hood to the back of the body, in metres. An EXPS2 is 96.5mm, and every other dimension of the model is in proportion to it.",
+  "overall_length": 0.0965,
+  "length_axis": 0,
+
+  "_axes": "The viewmodel's +x, +y and -z, as axes of the file. This FBX is X-back, Y-up, Z-left.",
+  "axes": ["-z", "+y", "+x"],
+
+  "max_texture": 1024,
+
+  "_glass": "The window: its own translucent primitive with no map. The one surface here that must not be opaque - the whole point of a holographic sight is that the target stays visible through it - and the atlas has no glass on it to sample anyway. Its centre is also the origin.",
+  "glass": "holo_glass",
+  "glass_tint": [0.42, 0.60, 0.62, 0.16],
+
+  "base_colour": "Base Color.png",
+  "occlusion": "Ambient Occlusion.png",
+
+  "_ao_strength": "Fixed-function lighting has one lamp and no shadowing, so an optic lit by it reads as plastic without occlusion folded in - but at full strength the flats get crushed along with the crevices, so the map is pulled toward white by what is left off.",
+  "ao_strength": 0.5,
+
+  "_target_albedo": "What the finished map has to average across the surface that samples it, so the optic and the rifle it is bolted to read as the same material under the same lamp.",
+  "target_albedo": 37.7,
+
+  "_unmapped": "A material more than this share of whose area reads a texel at or below unmapped_texel is not on an island at all, and is drawn flat instead of sampling bare canvas.",
+  "unmapped_texel": 2,
+  "unmapped_share": 0.5,
+  "flat_tint": [0.94, 0.97, 1.09]
+}
