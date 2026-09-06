@@ -14,11 +14,11 @@
   "_max_texture": "Sampled by a fixed-function pipeline on a gun that fills a fraction of the screen. Past this the extra detail is not resolvable and the file is twice the size.",
   "max_texture": 1024,
 
-  "_materials": "The base colour each material draws with. The FBX links normal, roughness and metallic maps but no diffuse for the receiver, so the pairing is by name rather than by connection - stated here so a missing map is visible rather than silently flat. 'ao' is multiplied in; 'color' is the fallback tint for a material with no map on disk at all.",
+  "_materials": "The base colour each material draws with, and the whole of what this asset is: a part whose material is not named here is not part of the gun. The FBX links normal, roughness and metallic maps but no diffuse for the receiver, so the pairing is by name rather than by connection - stated here so a missing map is visible rather than silently flat. 'ao' is multiplied in.",
+  "_dropped": "IronSightMat, the flip-up front post and rear leaf. The gun wears whichever of four optics the player fits and their reticles sit at four different heights, so there is no one post that co-witnesses; what is drawn is the gun, and the sight picture belongs to the optic. This is why the importer no longer folds the rear leaf - the whole node goes.",
   "materials": {
     "M4_Mat":       {"map": "M4_Colour.png", "ao": "M4_AO.png"},
     "M4Mag_Mat":    {"map": "M4Mag_Colour.png"},
-    "Bullet_Mat":   {"map": "556x45_Colour.png"},
-    "IronSightMat": {"color": [0.20, 0.21, 0.24, 1.0]}
+    "Bullet_Mat":   {"map": "556x45_Colour.png"}
   }
 }

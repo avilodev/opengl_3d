@@ -22,6 +22,36 @@
    was not always true: the path used to be a #define reached through an enum,
    and adding the first sword meant editing this file to say so. */
 
+/* How many distinct meshes the cache behind this file holds at once - counted
+   off the same two lists that say what exists, rather than written down.
+
+   Written down it was 8, and the game grew past it. The cache is keyed by path
+   and never evicts, so the first 8 distinct meshes a session asked for got a
+   slot and every later one was refused and fell back to the boxes. Nothing
+   said so. What it looked like was a gun that was a gun on one run and a crate
+   on the next, because WHICH meshes lost depended entirely on the order they
+   were first asked for - which class spawned, which weapon key was pressed,
+   which optic was fitted. With four optics on a cycle key and seven guns, a
+   session could ask for twelve.
+
+   Counted, it cannot happen again: a weapon can name two meshes, its own and a
+   scabbard, and an optic names one, so this is the most the game can ever ask
+   for at once and adding either kind moves it. The slack costs a 2.2KB header
+   per unused slot and no geometry at all - the vertices hang off pointers and
+   are only allocated by a load that actually happened.
+
+   tools/weapon_spec_probe.c checks the game against this, which is what turns
+   a silent fallback into a failing check. */
+enum {
+    WEAPON_MESH_SLOTS = 0
+#define WEAPON(id) + 2
+#include "gameplay/weapon_list.h"
+#undef WEAPON
+#define SIGHT(id) + 1
+#include "gameplay/sight_list.h"
+#undef SIGHT
+};
+
 /* Draws `spec`'s own mesh about the origin. Non-zero when it drew; zero when
    the weapon names no mesh, or the file would not load, and the caller should
    fall back to the boxes it drew before there was one.

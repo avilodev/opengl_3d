@@ -1,0 +1,45 @@
+{
+  "generator": "tools/mro_to_glb.py",
+  "source": "source.fbx",
+  "output": "sight_mro.glb",
+  "textures": "textures",
+
+  "_scale": "Metres per unit, off the Picatinny rail the artist modelled under the optic. This is the only real-world standard in the file - UnitScaleFactor is the exporter's untouched 1.0 and says nothing - and it is a better reference than the optic itself because it is a dimension with a spec rather than a dimension somebody recalls: MIL-STD-1913 fixes the rail at 21.2mm across its widest point, and Pikatini_low is 95.29 units there.\n\nTwo checks, taken independently, say the same thing. The rail's top flat is 69.49 units where the standard puts it at 15.67mm, which is 0.2255mm per unit against the 0.2225 the full width gives - a 1.4% disagreement between two measurements of the same part. And the optic that falls out of it is 63.7mm long where a Trijicon MRO is 66mm. Nothing else in the file agrees to better than that, so the scale is taken from the width and the working is left here.",
+  "scale_reference": "Pikatini_low",
+  "scale_axis": 0,
+  "scale_metres": 0.0212,
+
+  "_axes": "The viewmodel's x, y and z as signed axes of the file - identity, because this FBX is already X-right, Y-up, Z-back. Forward is the viewmodel's -z and so the file's -Z, which took some settling because the mount argues the other way: the optic overhangs the mount by 18mm at +Z and is flush with it at -Z, which on most mounts would put the objective at +Z.\n\nTwo things outrank it. The battery cap - the one large round face on the housing's side - is at -X, and on an MRO the battery sits on the LEFT; with up at +Y that fixes forward at -Z and nothing else. And the aperture at -Z measures 24.6mm where the aperture at +Z measures 35.6mm, which is a 25mm objective and an ocular, in that order. An optic imported the other way round still looks like an optic and aims out of the shooter's eye.",
+  "axes": ["+x", "+y", "+z"],
+
+  "max_texture": 1024,
+
+  "_body": "What the optic IS. The rail is not part of it - see seat_node - so the export is these two and nothing else.",
+  "body_nodes": ["Scope_low", "Base_low"],
+
+  "_glass_node": "Which of those two the lenses and the optical axis are looked for on. The mount has to be kept out of that search and not merely ranked below it: it reaches 1mm further forward than the optic does, so a search over both takes the mount's own front face for the objective end, and then the axis - which is the centroid of what it finds - is dragged down to the middle of a bracket. The mount is a real part of the asset and a nuisance to the one measurement that must not include it.",
+  "glass_node": "Scope_low",
+
+  "_seat": "The top of the rail the artist modelled this optic sitting on, which is the flat it rests on when it is clamped to a gun. Taken the carbine optic's way rather than the EXPS2's: that one FINDS its seat as the largest downward-facing flat in its bottom half, and that rule is right for a sight modelled on its own and wrong for one modelled already seated. Where the artist rested it is not something to infer, it is something the file already says - and this mount's jaws wrap the rail and hang below its top face, so the rule that looks for a flat underneath would find the jaws and put the optic several millimetres too low.\n\nThe rail is measured and then dropped. Exporting it would ship a second rail to sit on top of the gun's own.",
+  "seat_node": "Pikatini_low",
+
+  "_glass": "There is none, and that is the thing to know about this delivery. Every other optic here has its window in the file - a named material, a pane or a tube - and this one is a hollow housing with two open holes: at the objective nothing exists inside a radius of 48.3 units, at the ocular nothing inside 73.0. The artist modelled the barrel and both bezels and left the glass out.\n\nSo it is BUILT. Each end's opening is capped with a disc, on the shelf the lens would have been seated on, at exactly the radius of the bore it plugs. That is a better window than a found one would have been - it is round, it is the size of the hole, and it cannot be a stray triangle that passed a filter - but it is manufactured rather than measured, and it is the one part of this asset that is.\n\nWhat the mesh IS asked for is where to put them. The optical axis is the centroid of everything square to that axis at the two ends, which is bezel and bore together and concentric either way; the bounding box would not do, because the turrets pull it 6.7 units off the axis across and 23 up. The aperture is then the smallest radius anything square to the axis reaches at that end, and the plane is where that radius sits. Both come back out in measured.json, so a re-export that changes the bore changes the glass with it.\n\nTranslucent and unmapped, for the same two reasons every other optic's window is: the target has to stay visible through the glass, and the renderer builds the reticle's stencil mask out of whatever draws translucent. Each disc faces out of its own end - the objective forward, the ocular back at the eye - which is the one the shooter is looking through.",
+  "glass_tint": [0.38, 0.54, 0.59, 0.17],
+
+  "_lens_depth": "How far in from each end of the housing to look for the opening, in metres. The objective's shelf is 2.2mm deep and the ocular's 2.8mm, and the nearest thing behind either is the barrel wall, whose normals are radial and excluded already. 4mm reaches both without reaching anything else.",
+  "lens_depth": 0.004,
+
+  "_lens_segments": "How many triangles go round each disc. The bores they plug are drawn with 64 segments, so matching that leaves no gap at the rim and adds no detail the housing does not already have.",
+  "lens_segments": 64,
+
+  "_target_albedo": "What the finished map has to average across the surface that samples it, so the optic and the rifle it is bolted to read as the same material under the same lamp. The M4 landed at 37.6 on its own and everything imported since has been pulled to 37.7 to sit beside it.",
+  "target_albedo": 37.7,
+
+  "_ao_strength": "Fixed-function lighting has one lamp and no shadowing, so an optic lit by it reads as plastic without occlusion folded in - but at full strength the flats get crushed along with the crevices, so the map is pulled toward white by what is left off. The same half the EXPS2 takes.",
+  "ao_strength": 0.5,
+
+  "_materials": "One material over the whole optic, which is what the delivery has. Of the seven maps that came with it the renderer can read two: fixed-function lighting samples a base colour and nothing else, so the normal, height, metallic and roughness maps have no path into the frame and are not checked in. The occlusion is folded into the base colour here instead, which is the only way its information survives at all. The 4K and 8K sets went with them - 241MB of an optic that covers a few hundred pixels.",
+  "materials": {
+    "Material.001": {"map": "scope_BaseColor.png", "ao": "scope_AO.png"}
+  }
+}

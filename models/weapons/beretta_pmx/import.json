@@ -1,0 +1,39 @@
+{
+  "generator": "tools/gun_to_glb.py",
+  "source": "source.fbx",
+  "output": "beretta_pmx.glb",
+  "textures": "textures",
+
+  "_overall_length": "Muzzle to buttplate with the stock extended, in metres, and DERIVED rather than chosen - the same way the revolver's is, and for the same reason. This mesh carries 9x19mm ammunition modelled twice over: a loose round the artist put in mid-air for the preview render, and a stack of them inside the magazine. The loose round is 3.58 units long by 1.16 across, and a 9mm Parabellum is 29.69 by 9.93 - which is 8.29mm per unit on the length and 8.56 on the diameter. The stack in the magazine is 19.6 units tall, and a thirty-round double column is about 163mm, which is 8.32. Three measurements off two unrelated parts inside three per cent of each other, so 8.293mm per unit it is, and the gun comes to 527mm. Worth naming what that ISN'T: a real PMX is 418mm folded and 660mm extended, so this model is neither, and the cartridge is believed over the catalogue because the cartridge is IN the file.",
+  "overall_length": 0.527,
+  "length_axis": 2,
+
+  "_axes": "The viewmodel's +x, +y and -z, as axes of the file. Z-back, as on the MP7: the buttplate is at high z and the handguard at low. The layout along +z reads handguard, magwell, trigger, grip, stock tube, buttplate - which is a magazine forward of the pistol grip, and is the PMX's own layout rather than a guess.",
+  "axes": ["+x", "+y", "+z"],
+
+  "_receiver": "Not stated, and this is the case the M9's note describes from the other side. The chassis, handguard, receiver and stock are one node under one material, so there is no seam between receiver and stock to name - the mesh does not contain the landmark. The origin therefore goes on the bore at the REARMOST point, which is the buttplate with the stock extended, and butt_back comes out at zero by construction. That is worth knowing when reading view_forward on this gun's spec: it is measured from the back of the stock, where the carbine's is measured from 158mm forward of it.",
+
+  "_rail": "This gun has one, measured by the rule in gun_to_glb.py, and it is the gun that rule was written for. The chassis's HIGHEST point is 12.50, and that is not the rail: it is a pair of flip-up iron sights, one over the handguard and one behind the ejection port, standing 33mm proud of it. The rail is the flat at 8.50 that runs from the handguard to behind the ejection port - 51 per cent of the gun, against 9 per cent for the two sight bases above it - and 35mm above the bore, which is what a rail on a pistol-calibre carbine measures.",
+  "rail": true,
+
+  "_max_texture": "Sampled by a fixed-function pipeline on a gun that fills a fraction of the screen. Past this the extra detail is not resolvable and the file is twice the size.",
+  "max_texture": 1024,
+
+  "_cut": "The two flip-up irons, which this gun cannot take off by name: chassis, handguard, receiver, stock and sights are one node under one material. Both stand on the rail rather than being milled into it - see _rail, which had to work around them to find the flat at 8.50 - so the boxes cut everything above that rail across the stretch each sight occupies, base plate and all. That is the whole sight rather than a trimmed post, which is what makes this gun the clean case of the three.",
+  "cut": [
+    {"_": "the rear flip-up, behind the ejection port", "along": [-12.60, -9.40], "above": 8.55},
+    {"_": "the front flip-up, over the handguard", "along": [13.35, 16.60], "above": 8.55}
+  ],
+
+  "_target_albedo": "What the finished maps have to average across the surface that samples them, so this gun and the ones beside it read as the same material under the same lamp. One gain across every material and not one per material: normalising each in turn would flatten the relative values the artist chose and level the gun into a single shade of grey.",
+  "target_albedo": 37.7,
+
+  "_materials": "What is named here is what the gun IS, and three of the file's seven nodes are named nowhere. The two attach_ nodes are full-length cosmetic body kits - alternate chassis shells, not optics: they stand 19mm above the frame, which is a rail cover and not a sight. Nothing in the game can equip a body kit, so importing them would be two megabytes of mesh no code can reach. The charm hanging off the magwell goes with them. The loose cartridge goes too, and for a different reason: it is a preview prop floating 65mm in front of the muzzle, and leaving it in would put the gun's scale and its muzzle on a bounding box that includes a round in flight. It shares its material with the rounds in the magazine, which is why the manifest drops it by NODE.",
+  "materials": {
+    "pmx_body":     {"source": ["pmx"], "map": "pmx_BaseColor.png"},
+    "pmx_magazine": {"source": ["magazine"], "map": "magazine_BaseColor.png"},
+    "pmx_rounds":   {"nodes": ["cartridge_stack.001"], "map": "cartridge_BaseColor.png"}
+  },
+
+  "_textures": "One base colour per material and nothing else - the renderer has one lamp and no normal mapping, so the artist's normal, roughness, metallic, emission and alpha maps are files nothing could read. Where the artist offered variants, one is chosen and the rest are not checked in: the body is `base` rather than `stickerless`, the magazine is `base` rather than one of the three in magazines/, and the ammunition is M882 ball rather than the Luger CCI or the Winchester +P."
+}

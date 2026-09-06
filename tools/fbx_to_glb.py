@@ -13,18 +13,19 @@ now, which the katana and the optic call too. What is left here is the three
 things that are true of THIS gun and of nothing else:
 
   * The origin, moved onto the bore line at the back of the receiver, which is
-    where the viewmodel offsets in weapon_specs.c are measured from. Found off
+    where the viewmodel offsets in src/gameplay/weapons/ are measured from. Found
+off
     the barrel rather than off the bounding box, because a gun's mesh includes
     a stock and a magazine and the bore is neither.
 
-  * The rear backup sight, which the artist modelled deployed. This gun carries
-    an optic whose reticle sits at the height the irons do, so a raised rear
-    sight would stand between the eye and the glass -- and at 60mm from the eye
-    it is not a thin blade there, it is a wall across the bottom half of the
-    sight picture. Every real rifle with a red dot at that height has that
-    sight folded flat, so folding it is what this bakes. The front post stays:
-    it lands a hair under the dot, which is the co-witness the height was
-    chosen for.
+  * The irons, dropped. This used to fold the rear leaf down and keep the front
+    post, on the argument that a post landing a hair under the dot is the
+    co-witness the mount height was chosen for. That argument is gone: the gun
+    wears whichever of four optics the player fits, their reticles sit at four
+    different heights, and a post that co-witnesses one of them clips through
+    the rest. What is drawn is the gun; the sight picture belongs entirely to
+    the optic. A material the manifest names is kept and one it does not is
+    dropped, which is the rule cz_to_glb.py already worked to.
 
   * The rail's own height above the bore, measured and WRITTEN to
     placement.json rather than printed for somebody to copy. That number is the
@@ -50,26 +51,6 @@ import asset_import as ai
 FOLDER = 'models/weapons/m4_carbine'
 
 
-def fold_rear_sight(group, cut):
-    """The iron sight group with everything behind `cut` on the FBX's X taken
-    out -- the rear leaf, leaving the front post. Rebuilt rather than filtered
-    in place so the vertices the dropped triangles used go too."""
-    kept = {'positions': [], 'normals': [], 'uvs': [], 'indices': []}
-    moved = {}
-    for i in range(0, len(group['indices']), 3):
-        triangle = group['indices'][i:i + 3]
-        if sum(group['positions'][v * 3] for v in triangle) / 3.0 < cut:
-            continue
-        for v in triangle:
-            if v not in moved:
-                moved[v] = len(kept['positions']) // 3
-                kept['positions'] += group['positions'][v * 3:v * 3 + 3]
-                kept['normals'] += group['normals'][v * 3:v * 3 + 3]
-                kept['uvs'] += group['uvs'][v * 2:v * 2 + 2]
-            kept['indices'].append(moved[v])
-    return kept
-
-
 def main():
     manifest = ai.Manifest(FOLDER)
     parts = ai.load_parts(manifest.path('source'))
@@ -78,15 +59,19 @@ def main():
     # decide the scale and the origin are across the whole gun.
     low, high = ai.bounds([g for _, _, g in parts])
 
-    # The rear leaf, folded. The two iron sights sit at opposite ends of the
-    # gun, so the midpoint of its length is all it takes to tell them apart and
-    # nothing here has to know where either one actually is. Done after the
-    # bounds, which are the whole gun's and must not move when a part is
-    # dropped: the scale and the muzzle in weapon_specs.c are measured off them.
-    parts = [(name, material,
-              fold_rear_sight(group, (low[0] + high[0]) * 0.5)
-              if name == 'IronSight' else group)
-             for name, material, group in parts]
+    # And only now is anything dropped. A part whose material this manifest
+    # does not name is not part of the gun - the irons, here - and it goes
+    # after the bounds rather than before, because the bounds are the whole
+    # gun's and must not move when furniture comes off: the scale and the
+    # muzzle in the gun's spec are measured from them.
+    wanted = manifest['materials']
+    parts = [(name, material, group) for name, material, group in parts
+             if material in wanted]
+    missing = set(wanted) - {m for _, m, _ in parts}
+    if missing:
+        raise ValueError('%s names materials the mesh does not have: %s'
+                         % (os.path.join(FOLDER, 'import.json'),
+                            ', '.join(sorted(missing))))
 
     scale = ai.scale_for(low, high, manifest['length_axis'],
                          manifest['overall_length'])
@@ -105,7 +90,7 @@ def main():
     # Every material first, then every primitive - the order the buffer is laid
     # out in, and the order this asset has always been written in.
     material_ids = {}
-    for name, spec in manifest['materials'].items():
+    for name, spec in wanted.items():
         png = ai.texture_png(manifest.textures, spec['map'], spec.get('ao'),
                              manifest['max_texture']) if 'map' in spec else None
         material_ids[name] = primitives.material(

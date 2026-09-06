@@ -1,0 +1,40 @@
+{
+  "generator": "tools/gun_to_glb.py",
+  "source": "source.fbx",
+  "output": "mp7.glb",
+  "textures": "textures",
+
+  "_overall_length": "Muzzle to buttplate with the stock extended, in metres, and the chosen number every other dimension follows from. An MP7A1 is 638mm extended and 415mm folded, and the mesh checks the first against the second: the receiver alone - the Weapon casing node, which is the whole gun with the stock taken off - is 39.0 units, which at this scale is 408mm against the catalogue's 415mm folded. A model that agrees with the catalogue at both ends is a model whose scale is right.",
+  "overall_length": 0.638,
+  "length_axis": 2,
+
+  "_axes": "The viewmodel's +x, +y and -z, as axes of the file. Z-BACK on this one, not forward: the Buttstock node sits at high z and the barrel at low, so the file's z runs the opposite way to the carbine's and the third entry is positive where the carbine's is negative. That one sign is also what tells the importer which end the muzzle is on - see gun_to_glb.py - so it is stated once here and never again.",
+  "axes": ["+x", "+y", "+z"],
+
+  "_receiver": "The Weapon casing node, whose back is where the stock takes over. Named rather than left to the rearmost point, because this gun HAS the seam a pistol does not: the stock is a separate node running 230mm further back, and an origin out at the buttplate would put the viewmodel holding the gun by the end of a telescoping tube. Every offset in the spec is measured from the bore at the back of the receiver, and this is that point.",
+  "receiver": {"node": "Weapon casing"},
+
+  "_rail": "The same node, because on this gun the receiver's own highest point IS the rail: the flip-up sights are modelled as four separate nodes standing on it, so the casing's top face is the flat an optic clamps to and nothing on it can be mistaken for something higher. That is the opposite of the carbine's problem, where the rail had to be named to keep a block at the stock junction out of the measurement.",
+  "rail": {"node": "Weapon casing"},
+
+  "_max_texture": "Sampled by a fixed-function pipeline on a gun that fills a fraction of the screen. Past this the extra detail is not resolvable and the file is twice the size.",
+  "max_texture": 1024,
+
+  "_target_albedo": "What the finished map has to average across the surface that samples it - the figure the M4 landed on and everything since has been matched to.",
+  "target_albedo": 37.7,
+
+  "_ao_strength": "How much of the artist's occlusion to fold in. This map is the reason asset_import grew the setting at all: at full strength it halves the whole surface - the base colour averages 16.5 and comes out at 8.1 - so it is not picking out crevices, it is a second coat of black over a gun that is already black polymer. The albedo gain then spends itself undoing that rather than lighting the gun. Pulled to half, the crevices still darken, the flats keep their value, and the lift needed afterwards is a third less.",
+  "ao_strength": 0.5,
+
+  "_materials": "One atlas over eight nodes, split into three materials that share it. The splits exist because a part that cannot be named cannot be treated differently, and two of them have to be. The magazine comes out during a reload and is drawn apart from the rest of the gun. The flip-up irons stand 79mm above the bore against a rail at 52mm, so an optic on that rail is looking straight through them - they are hidden by name in the spec, the way the M4 and the carbine hide theirs. On this mesh the only thing that separates either from the receiver is its node, because every part of the gun reads the same image; all three materials therefore share ONE copy of that image in the glb rather than baking three megabytes of the same pixels. See gun_to_glb.py. The node-claiming materials come first because the first claim wins, and mp7_body claims everything left. There is no rounds_part: this magazine is a closed box with nothing modelled inside it.",
+  "materials": {
+    "mp7_magazine": {"nodes": ["Magazine"], "share": "mp7_body"},
+    "mp7_body":     {"source": ["Mp7M"], "map": "Base Color.png",
+                     "ao": "Ambient Occlusion.png"}
+  },
+
+  "drop": ["Bar for front sight", "Front sight",
+           "Bar for firearm sight", "Firearm sight"],
+  "_drop": "The flip-up irons: four nodes - `Bar for front sight`, `Front sight`, `Bar for firearm sight`, `Firearm sight` - which is 6012 triangles of furniture. By node and not by material, because this gun is one material end to end and the nodes are the only seam in it. The gun wears whichever of four optics the player fits and their reticles sit at four different heights, so no post co-witnesses all of them; what is drawn is the gun. The rail is measured off `Weapon casing` and so does not move when these come off - see _rail.",
+  "_textures": "Base colour and occlusion only. The artist shipped the same maps in six engines' conventions - Blender, Corona, PBR, Unity, Unreal and Vray - and none of them reaches the glb: the renderer has one lamp and no normal mapping, so a normal, roughness, metallic or height map is a file nothing can read. Those six folders were 281MB against the 3MB here and are deleted rather than ignored, being the artist's own re-exports of one source. The EOTech that came in this same drop is not here either - it is a sight, it clamps to a rail, and every gun in the game should be able to carry it, so it is imported on its own as models/attachments/sight_close."
+}

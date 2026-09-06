@@ -15,7 +15,7 @@ OBJ_DIR := obj
 
 # Directories that are part of the build. Adding a .c file to one of these
 # needs no change here; adding a new module directory needs one word.
-SRC_DIRS := src src/render src/gameplay src/input src/states
+SRC_DIRS := src src/render src/gameplay src/gameplay/weapons src/input src/states
 
 # Modules taken one file at a time, because their directory holds more than the
 # build wants: src/core also has dialogue, save state and inventory, none of
@@ -53,6 +53,16 @@ DEPS := $(OBJS:.o=.d)
 # the placement search lives in arm_placement.c apart from the renderer that
 # calls it, and why the _glb readers are split from the modules that upload
 # what they read.
+# The weapons themselves, one file each, taken as a wildcard where every other
+# entry above is named.
+#
+# Named lists exist here so that a file which needs a GL context cannot drift
+# into a headless probe, and that argument does not reach this directory: a
+# weapon file is a const struct and three includes, and there is nothing in one
+# to link. What a wildcard buys is the thing this split was for - adding a
+# weapon is adding a file, and it is not also a line here to forget.
+WEAPON_SPECS := $(wildcard src/gameplay/weapons/*.c)
+
 HEADLESS_CORE := \
     src/core/json.c \
     src/gameplay/action_track.c \
@@ -68,6 +78,7 @@ HEADLESS_CORE := \
     src/gameplay/player_slide.c \
     src/gameplay/player_wallclimb.c \
     src/gameplay/player_wallrun.c \
+    src/gameplay/sight_registry.c \
     src/gameplay/sights.c \
     src/gameplay/spawn_select.c \
     src/gameplay/third_person_camera.c \
@@ -79,7 +90,6 @@ HEADLESS_CORE := \
     src/gameplay/weapon_placement.c \
     src/gameplay/weapon_registry.c \
     src/gameplay/weapon_spec.c \
-    src/gameplay/weapon_specs.c \
     src/render/arm_geometry.c \
     src/render/arm_placement.c \
     src/render/character_animation.c \
@@ -91,7 +101,8 @@ HEADLESS_CORE := \
     src/render/stb_image.c \
     src/render/viewmodel_clip_arms.c \
     src/render/viewmodel_neck.c \
-    src/render/weapon_grip.c
+    src/render/weapon_grip.c \
+    $(WEAPON_SPECS)
 
 PROBE_CC := gcc
 # -MMD -MP so a probe rebuilds when a HEADER it reads changes, not only when a
@@ -149,18 +160,32 @@ $(TUNE_PROBE): tools/placement_probe.c $(HEADLESS_CORE)
 	    $(HEADLESS_CORE) -o $@ -lm
 tuneprobe:   $(TUNE_PROBE);  ./$(TUNE_PROBE)
 
+# Hands every weapon's baked numbers back as the placement.json the F5 key
+# re-reads, which is how a tuning session starts. Seeded from the C, so running
+# it changes nothing until somebody edits a file, and it never overwrites one
+# that already exists. Needs the overlay for the same reason the probe above
+# does. See tools/placement_write.c.
+PLACEMENT_WRITE := bin/placement_write
+$(PLACEMENT_WRITE): tools/placement_write.c $(HEADLESS_CORE)
+	@mkdir -p bin
+	$(PROBE_CC) $(PROBE_CFLAGS) $(CPPFLAGS) -DWEAPON_TUNING $< \
+	    $(HEADLESS_CORE) -o $@ -lm
+placements: $(PLACEMENT_WRITE); ./$(PLACEMENT_WRITE)
+
 # Everything the probes check, in one word. What to run before a commit.
 probes: probe bodyprobe sheathprobe meleeprobe deathprobe specprobe \
         tuneprobe
 
 .PHONY: all tune build clean run probes golden \
-        probe bodyprobe sheathprobe meleeprobe deathprobe specprobe tuneprobe
+        probe bodyprobe sheathprobe meleeprobe deathprobe specprobe tuneprobe \
+        placements
 
 all: $(TARGET)
 
 # The same game with the placement overlay compiled in: it reads any
 # placement.json sitting beside an asset, F5 re-reads one, and F6 prints it
-# back as C to paste into weapon_specs.c. See gameplay/weapon_placement.h.
+# back as C to paste into the weapon's own file in src/gameplay/weapons/.
+# See gameplay/weapon_placement.h.
 #
 # A separate target and a separate object directory, so that switching between
 # tuning and shipping is not a full rebuild each way - and so that `make` can
@@ -193,7 +218,8 @@ run: all
 # into every build.
 #
 # Every .glb rather than the six named ones, deliberately: which meshes a
-# weapon names is a fact about weapon_specs.c, and a package that had to be
+# weapon names is a fact about src/gameplay/weapons/, and a package that had
+# to be
 # told would be a package that silently missed the next one. Copying twenty
 # megabytes and never being wrong beats copying five and sometimes being wrong.
 RUNTIME_DIRS := assets data

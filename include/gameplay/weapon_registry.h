@@ -6,11 +6,12 @@
 /* Every weapon there is, as a list a caller can walk.
 
    This exists because of one silent failure. The probes used to name weapons
-   by symbol - tools/weapon_spec_probe.c listed three of them by hand, and the
-   other four probes each hardcoded whichever weapon they were written for. A
-   weapon added to weapon_specs.c and to the loadout list was therefore a
-   weapon nothing checked: every probe still passed, because they were all
-   still passing on the weapons they had been told about. Nothing announced
+   by symbol - tools/weapon_spec_probe.c listed three of them by hand, and
+   the other four probes each hardcoded whichever weapon they were written
+   for. A weapon added to src/gameplay/weapons/ and to the loadout list was
+   therefore a weapon nothing checked: every probe still passed, because
+   they were all still passing on the weapons they had been told about.
+   Nothing announced
    that the fourth weapon was unmeasured. It simply was.
 
    A loop over this cannot make that mistake. The list comes out of
@@ -40,26 +41,33 @@ const WeaponSpec* weapon_registry_find(const char* name);
    cycle key needs to answer "and then the next one". */
 int weapon_registry_index_of(const WeaponSpec* spec);
 
-/* --- the tuning overlay -------------------------------------------------
-   Only under WEAPON_TUNING, and inert without it.
+/* --- writing to a weapon ------------------------------------------------
 
-   A weapon a placement file may write over. The specs in weapon_specs.c are
-   const globals and must stay that way - they are what ships - so a tuning
-   build keeps a mutable COPY of each, and it is the copy that everything gets.
-   weapon_registry_get answers the copy when the overlay is compiled in and the
-   literal when it is not, so no caller anywhere learns that tuning exists.
+   The specs in src/gameplay/weapons/ are const globals and must stay that way:
+   they are what ships, and they are the record of what a weapon IS. So the
+   registry keeps a mutable COPY of each, hands the copy to everyone through
+   weapon_registry_get, and this is how a writer reaches it. No caller anywhere
+   learns that the copy exists.
 
    The copies carry their own FirearmSpec and MeleeSpec, re-pointed, because
-   most of the numbers worth nudging are on those halves rather than on the
+   most of what is worth writing is on those halves rather than on the
    WeaponSpec itself.
 
-   Answers NULL for an index off the end, and for every index in a build with
-   no overlay - which is what a caller should check rather than assuming. */
-WeaponSpec* weapon_registry_tunable(int index);
+   This used to exist only under WEAPON_TUNING, when the only writer was a
+   placement file being nudged by hand. It is unconditional now because it has
+   a second writer that ships: which optic a gun is wearing is something the
+   player changes at runtime, and the sight lives on the FirearmSpec. A control
+   the player has cannot be a control that needs a development build - see
+   gameplay/sight_registry.h.
 
-/* Whether this build has the overlay at all. A constant, so the branches
-   around it fold away in a release build rather than being #ifdef'd at every
-   site. */
+   Answers NULL for an index off the end, which is what a caller should check
+   rather than assuming. */
+WeaponSpec* weapon_registry_mutable(int index);
+
+/* Whether this build has the PLACEMENT overlay - the hand-nudged tuning file
+   and the keys that reload and bake it. Not about the copies above, which are
+   always there. A constant, so the branches around it fold away in a release
+   build rather than being #ifdef'd at every site. */
 int weapon_registry_tuning_enabled(void);
 
 #endif

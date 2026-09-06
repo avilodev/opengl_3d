@@ -16,9 +16,11 @@
    renamed a material does, and exactly what nobody notices until a screenshot
    has an iron sight poking through an optic. */
 #include "gameplay/weapon_registry.h"
+#include "gameplay/sight_registry.h"
 #include "gameplay/viewmodel_pose.h"
 #include "gameplay/weapon_spec.h"
 #include "render/static_model.h"
+#include "render/weapon_model.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -265,6 +267,85 @@ static int signature_matches(void) {
     return same;
 }
 
+/* Every optic in the rack, whether or not a weapon currently carries one.
+
+   The same argument the weapon registry makes. A sight reached only through
+   the weapon that names it is a sight checked only while some weapon names it,
+   and the development key that puts each of them on the gun in turn can reach
+   one that nothing does - so an optic whose mesh went missing would be a
+   keypress away from a gun with no sight on it and nothing said. Walking the
+   rack is what makes the swap key safe to trust.
+
+   The mount height is not checked here and cannot be: it is the sum of a rail
+   the sight knows nothing about and a seat the gun knows nothing about, which
+   is the whole point of keeping the two halves apart. What IS checked is that
+   both halves are present and positive, because a zero on either side is the
+   shape a missed measurement takes. */
+static void check_sight(const SightSpec* sight) {
+    printf("%s\n", sight->name);
+    expect(sight->name != NULL, "states a name");
+    expect(sight->reticle_above_seat > 0.0f,
+           "its reticle stands above its own seat");
+    expect(sight->window_radius > 0.0f, "has a window to look through");
+    expect(sight->magnification >= 1.0f, "does not shrink the target");
+    if (!sight->mesh_path) {
+        printf("   ---- no mesh yet, drawn out of boxes\n");
+        return;
+    }
+    StaticModel model;
+    char error[256];
+    if (!static_model_load_glb(&model, sight->mesh_path, error, sizeof error)) {
+        expect(0, error);
+        return;
+    }
+    expect(1, sight->mesh_path);
+}
+
+
+/* Every mesh the game can ask for, against the number the renderer can hold.
+
+   The cache in src/render/weapon_model.c is keyed by path and never evicts:
+   the first WEAPON_MESH_SLOTS distinct meshes requested get a slot, and every
+   later one is refused and falls back to the boxes. Nothing about that is
+   visible on screen except a gun that is sometimes a gun and sometimes a
+   crate, depending on the order a session happened to ask - which spawn class,
+   which weapon key, which optic. It cannot be caught by looking at one weapon,
+   because no single weapon is wrong.
+
+   So it is counted here instead. A weapon can name two meshes, its own and a
+   scabbard, and every optic in the rack names one. */
+static void check_mesh_cache(void) {
+    const char* paths[64];
+    int n = 0;
+    for (int i = 0; i < weapon_registry_count(); ++i) {
+        const WeaponSpec* spec = weapon_registry_get(i);
+        const MeleeSpec* melee = weapon_spec_melee(spec);
+        const char* named[2] = {spec->mesh_path,
+                                melee ? melee->scabbard_path : NULL};
+        for (int k = 0; k < 2; ++k) {
+            if (!named[k]) continue;
+            int seen = 0;
+            for (int j = 0; j < n; ++j)
+                if (strcmp(paths[j], named[k]) == 0) seen = 1;
+            if (!seen && n < (int)(sizeof paths / sizeof paths[0]))
+                paths[n++] = named[k];
+        }
+    }
+    for (int i = 0; i < sight_registry_count(); ++i) {
+        const SightSpec* sight = sight_registry_get(i);
+        if (!sight->mesh_path) continue;
+        int seen = 0;
+        for (int j = 0; j < n; ++j)
+            if (strcmp(paths[j], sight->mesh_path) == 0) seen = 1;
+        if (!seen && n < (int)(sizeof paths / sizeof paths[0]))
+            paths[n++] = sight->mesh_path;
+    }
+    printf("\nthe mesh cache\n");
+    printf("  %d distinct meshes named, %d slots\n", n, WEAPON_MESH_SLOTS);
+    expect(n <= WEAPON_MESH_SLOTS,
+           "every mesh the game names fits in the renderer's cache");
+}
+
 int main(int argc, char** argv) {
     /* `make golden` passes --update. Deliberately an argument rather than an
        environment variable or a second binary: rewriting the file somebody is
@@ -288,6 +369,13 @@ int main(int argc, char** argv) {
         check_mesh(weapon_registry_get(i));
     for (int i = 0; i < weapon_registry_count(); ++i)
         check_blade(weapon_registry_get(i));
+
+    printf("\n%d optics in the rack\n", sight_registry_count());
+    for (int i = 0; i < sight_registry_count(); ++i)
+        check_sight(sight_registry_get(i));
+
+    check_mesh_cache();
+
     printf("\nthe golden snapshot\n");
     signature_matches();
     printf("\n%d failures\n", failures);

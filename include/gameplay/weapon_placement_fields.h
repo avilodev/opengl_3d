@@ -12,11 +12,11 @@
 
    Adding a field is one row here.
 
-   Only MEASURED numbers belong in this list - the ones found by squinting at
-   a screen or taken off a mesh by the importer, which change when the ASSET
-   changes. A magazine size, a rate of fire and a bloom curve are chosen for
-   feel, change when the DESIGN changes, and stay in weapon_specs.c where their
-   reasons are written down.
+   Only MEASURED numbers belong in this list - the ones found by squinting
+   at a screen or taken off a mesh by the importer, which change when the
+   ASSET changes. A magazine size, a rate of fire and a bloom curve are
+   chosen for feel, change when the DESIGN changes, and stay in
+   src/gameplay/weapons/ where their reasons are written down.
 
    The first argument is which struct the field is on, because the three are
    reached differently: a weapon always has a WeaponSpec, and has at most one

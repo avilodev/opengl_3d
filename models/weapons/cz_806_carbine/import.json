@@ -1,0 +1,41 @@
+{
+  "generator": "tools/cz_to_glb.py",
+  "source": "source.fbx",
+  "output": "cz_806_carbine.glb",
+  "textures": "textures",
+
+  "_overall_length": "Muzzle to buttplate, in metres. The artist did not state one, so it is inferred: three fixed real-world dimensions the mesh happens to contain each imply a total, and they bracket it. The magazine is 16.52 units across and a STANAG body is 25.4mm, which puts the rifle at 712mm; the bare muzzle is 8.90 units and a 5.56 barrel is about 15mm there, 780mm; the optic's glass is 10.98 units and a tube dot's is about 20mm, 843mm. A Bren 2 is 745mm with the 11-inch barrel and 905mm with the 14.5, and only the first is inside that spread. This is the one CHOSEN number in the file and every other dimension follows from it, so it is stated with its working rather than asserted.",
+  "overall_length": 0.745,
+  "length_axis": 2,
+
+  "_axes": "The viewmodel's +x, +y and -z, as axes of the file. This FBX is Z-forward, Y-up, X-across, with the charging handle on +x - which is the left of a rifle, and so the viewmodel's -x.",
+  "axes": ["-x", "+y", "-z"],
+
+  "_receiver": "The origin goes on the bore at the BACK of the receiver, which is where the viewmodel offsets in weapon_specs.c are measured from. The M4's file happened to have its own zero there and its importer could leave the origin alone; this one's zero is out at the magwell, so the landmark is measured: the rearmost point of the receiver shell, which is where the stock takes over.",
+  "receiver": "base",
+
+  "_rail": "What an optic clamps to. Named rather than found as \"whatever stands highest behind the front sight\", because on this gun that is not the rail: the receiver shell carries a block at the stock junction that stands 1.2 units proud of it, and measuring the rail there would mount every sight two millimetres high.",
+  "rail": "rails",
+
+  "_max_texture": "Sampled by a fixed-function pipeline on a gun that fills a fraction of the screen. Past this the extra detail is not resolvable and the file is twice the size.",
+  "max_texture": 1024,
+
+  "_textures": "Base colour and occlusion only, already at max_texture. Nothing else reaches the glb - the importer bakes one image per material and the renderer has one lamp and no normal mapping - so the artist's normal, roughness, metallic, height and emissive maps are not checked in. They arrived in a textures_metalrough_specgloss/ folder beside this one - two full PBR workflows, 688MB of maps nothing here can read against the 6MB that ships - which was never tracked and has been deleted. If a lit renderer ever arrives, it comes back from the original delivery and not from this repository.",
+
+  "_target_albedo": "What the finished maps have to average across the surface that samples them. Fixed-function lighting has one lamp, no shadowing and no exposure, so how bright a thing looks on screen is decided entirely by the numbers in its map - and every delivery arrives on a different artist's idea of mid-grey. The M4 landed at 37.6 on its own and the EXPS2 was pulled to 37.7 to sit beside it; this is that same figure, and matching it is what stops a new gun reading as a different material under the same lamp. One gain across every material, not one per material: normalising each in turn would flatten the relative values the artist chose - a dark bolt against pale rails - and level the gun into a single shade of grey.",
+  "target_albedo": 37.7,
+
+  "_dropped": "The flip-up front post - material `ironsight` - and the tube red dot the artist modelled onto the rail, `reddot_base` and `glass`. The optic was always dropped here and imported on its own as models/attachments/sight_dot; the post goes with it now, because the gun wears whichever of four optics the player fits, their reticles sit at four different heights, and a post sized to co-witness one of them clips through the rest. What is drawn is the gun; the sight picture belongs to the optic.",
+  "_materials": "The base colour each material draws with, and the occlusion multiplied into it where the artist supplied one. This list is also what the asset IS: a part of the mesh whose material is not named here is not part of this gun, which is how the red dot - modelled into the same file - is left out of it and imported separately as models/attachments/sight_dot.",
+  "materials": {
+    "base":         {"map": "base_BaseColor.png"},
+    "front":        {"map": "front_BaseColor.png", "ao": "front_AO.png"},
+    "rails":        {"map": "rails_BaseColor.png"},
+    "stock":        {"map": "stock_BaseColor.png", "ao": "stock_AO.png"},
+    "grip":         {"map": "grip_BaseColor.png", "ao": "grip_AO.png"},
+    "grip.001":     {"map": "foregrip_BaseColor.png"},
+    "Material.002": {"map": "receiver_BaseColor.png"},
+    "bolt":         {"map": "bolt_BaseColor.png"},
+    "mag.001":      {"map": "magazine_BaseColor.png"}
+  }
+}

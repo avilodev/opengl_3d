@@ -8,6 +8,7 @@
 #include "gameplay/player_loadout.h"
 #include "gameplay/weapon_placement.h"
 #include "gameplay/weapon_registry.h"
+#include "gameplay/sight_registry.h"
 #include "gameplay/player_controller.h"
 #include "gameplay/weapon_tuning.h"
 #include "gameplay/player_visual_state.h"
@@ -273,6 +274,7 @@ int main(void) {
     int pending_next_weapon = 0;
     int pending_reload_placement = 0;
     int pending_bake_placement = 0;
+    int pending_next_sight = 0;
     /* Which swing the body is already playing, so a clip is looked up when it
        changes and not every frame. Out here rather than beside the code that
        reads them because swapping the weapon has to be able to forget them:
@@ -342,6 +344,7 @@ int main(void) {
             pending_next_weapon = 0;
             pending_reload_placement = 0;
             pending_bake_placement = 0;
+            pending_next_sight = 0;
         } else {
             /* The simulation runs on a fixed step and the frame feeds it time.
                Movement is full of per-step decisions - a clamped air-strafe
@@ -371,6 +374,8 @@ int main(void) {
                 action_pressed(&actions, ACTION_DEBUG_RELOAD_PLACEMENT);
             pending_bake_placement |=
                 action_pressed(&actions, ACTION_DEBUG_BAKE_PLACEMENT);
+            pending_next_sight |=
+                action_pressed(&actions, ACTION_NEXT_SIGHT);
 
             /* Aiming is not simulation. A mouse delta is an amount the frame
                already measured, and deferring it to the next step that happens
@@ -532,7 +537,7 @@ int main(void) {
         }
 
         /* The held weapon's placement, re-read or printed back out. Both are
-           nothing at all in a release build - weapon_registry_tunable answers
+           nothing at all in a release build - weapon_registry_mutable answers
            NULL and weapon_placement_emit is an empty function - so the branch
            costs a test against a constant and the linker drops the rest.
 
@@ -543,7 +548,7 @@ int main(void) {
         if (pending_reload_placement) {
             pending_reload_placement = 0;
             int index = weapon_registry_index_of(weapon.spec);
-            WeaponSpec* tunable = weapon_registry_tunable(index);
+            WeaponSpec* tunable = weapon_registry_mutable(index);
             if (tunable && weapon_placement_load(tunable) > 0) {
                 weapon_init(&weapon, tunable);
                 weapon_set_targets(&weapon, &combatants);
@@ -579,6 +584,32 @@ int main(void) {
             body.sheathed = weapon.sheathed;
             played_attack = -2;
             played_recovery = -1;
+        }
+
+        /* The next optic in the rack on the gun in hand, if the key was
+           pressed.
+
+           No weapon_init: the weapon is not being re-armed, one field on its
+           spec changed. Re-arming would drop the magazine back to full and the
+           bloom back to rest, which would make the one thing this key exists to
+           compare - how a sight sits and what it costs to look through - the
+           one thing it resets. So the swap is silent to everything but the
+           renderer, and the gun keeps the state it was in.
+
+           Outside the fixed step, beside the development keys rather than
+           among them, because changing which optic is fitted is not
+           simulation - nothing about it depends on how long a step is. */
+        if (pending_next_sight) {
+            pending_next_sight = 0;
+            const SightSpec* now = sight_registry_cycle(weapon.spec, 1);
+            if (now)
+                printf("sight: %s  (%.0fmm window, %.1fx, mount %.4f)\n",
+                       now->name, (double)(now->window_radius * 2000.0f),
+                       (double)now->magnification,
+                       (double)weapon_spec_sight_height(weapon.spec));
+            else
+                printf("sight: nothing to clamp one to - %s has no rail\n",
+                       weapon.spec ? weapon.spec->name : "this weapon");
         }
 
         /* Once a frame, off the controller the simulation just stepped. The

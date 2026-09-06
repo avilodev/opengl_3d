@@ -1,0 +1,33 @@
+{
+  "generator": "tools/reddot_to_glb.py",
+  "_source": "The carbine's file, not a copy of it. The artist modelled the optic into the rifle's scene, and the two imports read the same 3.4MB rather than each carrying its own - which also means a re-export cannot leave the gun and the sight on different vintages of the same mesh.",
+  "source": "../../weapons/cz_806_carbine/source.fbx",
+  "output": "sight_dot.glb",
+  "textures": "textures",
+
+  "_overall_length": "The RIFLE's length, not the optic's, and stated here on purpose. Metres per unit is a property of the FILE, and this optic shares its file with the gun it clamps to; measuring the scale off the optic alone would let the two disagree, and the mount height they add up to would be the sum of two different scales. The importer takes the span across everything in the file and keeps only the optic afterwards. See the carbine's import.json for where 0.745 comes from - it is the same number and it moves with it.",
+  "overall_length": 0.745,
+  "length_axis": 2,
+
+  "_axes": "The viewmodel's +x, +y and -z, as axes of the file. The carbine's frame, because it is the carbine's file.",
+  "axes": ["-x", "+y", "-z"],
+
+  "max_texture": 1024,
+
+  "_glass": "The tube's lens: its own translucent primitive. The one surface here that must not be opaque - the whole point of a red dot is that the target stays visible through it - and it is also what the stencil mask is built from, so a sight whose glass is missing loses the window and not just the look. Its axis is the optical centre, and so the origin.",
+  "glass": "glass",
+  "glass_tint": [0.36, 0.52, 0.58, 0.18],
+
+  "_seat_rail": "The flat this mount rests on, named as the carbine material it mates with. The other optic FINDS its seat - the largest downward-facing flat in its bottom half - and that rule is right for a sight modelled on its own and wrong for this one, which bundles body and riser into one material and so has a broader flat higher up that outweighs the foot. Guessing harder was the wrong fix. This optic is modelled ON the rifle, in the rifle's coordinates, already seated; where it rests is not something to infer, it is something the file already says. tools/reddot_to_glb.py still runs the other rule and prints both, so an export that floats the sight off the rail shows up as the two disagreeing instead of being silently absorbed.",
+  "seat_rail": "rails",
+
+  "_target_albedo": "What the finished maps have to average across the surface that samples them. Fixed-function lighting has one lamp, no shadowing and no exposure, so how bright a thing looks on screen is decided entirely by the numbers in its map - and every delivery arrives on a different artist's idea of mid-grey. The M4 landed at 37.6 on its own and the EXPS2 was pulled to 37.7 to sit beside it; this is that same figure, and matching it is what stops a new gun reading as a different material under the same lamp. One gain across every material, not one per material: normalising each in turn would flatten the relative values the artist chose - a dark bolt against pale rails - and level the gun into a single shade of grey.",
+  "target_albedo": 37.7,
+
+  "_materials": "As on the carbine: a part whose material is not named here is not part of this asset. These two are the halves of the optic; the other ten in the file are the gun.",
+  "materials": {
+    "reddot_base": {"map": "body_BaseColor.png"},
+    "_glass_has_no_map": "Deliberate. The window draws as glass_tint above - a translucent primitive with nothing sampled - so the artist's glass maps are never read, and checking them in would be two files the build has no way to use.",
+    "glass":       {}
+  }
+}

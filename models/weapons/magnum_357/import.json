@@ -1,0 +1,41 @@
+{
+  "generator": "tools/gun_to_glb.py",
+  "source": "source.fbx",
+  "output": "magnum_357.glb",
+  "textures": "textures",
+
+  "_overall_length": "Muzzle to the back of the grip, in metres. Unusually for these files it is not the chosen number - it is DERIVED, because this mesh carries eight .357 Magnum cartridges modelled in its chambers and a cartridge is a dimension the world agrees on. The loaded round runs 4.01 units end to end against a real 40.0mm; its case is 3.31 against 32.77mm; the case rim is 1.10 across against 11.18mm. Those three put the file between 9.90 and 10.16mm per unit, and at 10.0 the gun is 285mm long with 155mm of barrel forward of the cylinder - a six-inch .357, whose catalogue length is 291mm. Everything agrees, so 0.285 is what the mesh says it is.",
+  "overall_length": 0.285,
+  "length_axis": 2,
+
+  "_axes": "The viewmodel's +x, +y and -z, as axes of the file. Z-forward, Y-up, X-across, muzzle at high z: the last third of the length is 2.1 units wide and never varies, which is a barrel and nothing else.",
+  "axes": ["-x", "+y", "-z"],
+
+  "_bore": "The loaded round in the top chamber, named because the default rule would be wrong here by more than a centimetre. On a gun whose muzzle end is barrel alone, the centre of that end IS the bore; a revolver's muzzle end is barrel, top rib and ejector shroud stacked in a column 46mm tall, and its middle sits well under the hole. So the bore is taken from the one part of the mesh that is unambiguously on it: the cartridge the hammer is about to strike, whose axis the artist put at x 0.000 and y 13.379 while the cylinder's own axis is at y 11.943. The other seven chambers sit on a circle of 1.437 around that centre; this one is the top of it, dead on the centreline, which is the definition of the chamber in line with the barrel.",
+  "bore": {"node": "Mag357_Bullet_1"},
+
+  "_receiver": "Not stated. As on the M9: a handgun's frame ends where the gun ends, so the rearmost point is the landmark and there is no seam to name.",
+
+  "_rail": "Not stated, because this revolver has none. Adjustable irons on a ribbed barrel and a bare topstrap, so nothing clamps to it and the spec carries no sight.",
+
+  "_max_texture": "Sampled by a fixed-function pipeline on a gun that fills a fraction of the screen. Past this the extra detail is not resolvable and the file is twice the size.",
+  "max_texture": 1024,
+
+  "_cut": "The irons, which this revolver cannot take off by name - the whole gun is one material and the sights are milled into the topstrap and the barrel rib. Measured off the mesh: the topstrap runs at 14.78..15.18 and the rear notch block stands on it to 15.44; the barrel rib runs to 15.14 and the front blade stands on it to 15.50. Each box cuts just above the flat its sight stands on, so the rib and the topstrap survive and what goes is the part that stood proud of them.",
+  "cut": [
+    {"_": "the rear notch, on the topstrap", "along": [-6.70, -6.15], "above": 15.19},
+    {"_": "the front blade, on the barrel rib", "along": [12.20, 13.55], "above": 15.15}
+  ],
+
+  "_target_albedo": "What the finished map has to average across the surface that samples it - the figure the M4 landed on and everything since has been matched to, so a new gun reads as the same material under the same lamp rather than as a different one.",
+  "target_albedo": 37.7,
+
+  "_materials": "One 4K atlas over twenty-three nodes: frame, cylinder, crane, hammer, trigger, ejector rod and eight rounds with their cases. All of it is the gun - a loaded revolver is loaded - so one material claims every node by claiming the atlas. The cartridges stay in the chambers rather than becoming a rounds_part: this gun has no magazine to drop, so there is nothing for a reload to draw them apart from.",
+  "materials": {
+    "magnum_body": {
+      "source": ["Magnum"],
+      "map": "Magnum_BaseColor.png",
+      "ao": "Magnum_AO.png"
+    }
+  }
+}

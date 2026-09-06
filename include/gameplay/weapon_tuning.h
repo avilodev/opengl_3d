@@ -2,7 +2,7 @@
 #define WEAPON_TUNING_H
 
 /* What every weapon shares. Anything that differs between one gun and the next
-   is a field on WeaponSpec instead - see weapon_spec.h and weapon_specs.c.
+   is a field on WeaponSpec instead - see weapon_spec.h and src/gameplay/weapons/.
 
    The accuracy model those specs describe is deliberately one-sided: a bullet
    does the same damage at 200 metres as it does at two, and where it goes is

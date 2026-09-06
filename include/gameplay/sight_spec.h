@@ -30,8 +30,34 @@ typedef enum {
        kind of sight - you keep the room while you shoot into it. */
     WEAPON_RETICLE_HOLOGRAPHIC,
     /* A chevron on a ranging stadia, seen through a magnified prism's
-       circular window with an opaque body around it. */
-    WEAPON_RETICLE_CHEVRON
+       circular window with an opaque body around it.
+
+       NOTHING IN THE RACK USES THIS. The 2x prism that did was the last optic
+       drawn out of the renderer's boxes, and it went when the fourth mesh
+       arrived. What is left behind is the whole magnified path - this value,
+       hud.c's draw_acog_reticle, weapon_renderer.c's draw_acog, and the second
+       pass of the world in main.c that they are painted against - kept
+       deliberately and not by neglect.
+
+       Kept because it is the only thing here that answers a different
+       question. The four optics that ship are all one power, so what they
+       differ in is where the glass sits and what it costs to look through it;
+       none of them can make the target bigger. The machinery for an optic that
+       can is written and works, and a magnified sight is a plausible fifth. It
+       costs a branch that is never taken.
+
+       Anything that reads this enum still has to handle it. It is unreachable
+       by data, not by type, and a switch that drops it would be a switch that
+       breaks the day a scope is added. */
+    WEAPON_RETICLE_CHEVRON,
+    /* A bare dot in a tube, and the difference from HOLOGRAPHIC is one mark
+       rather than two: no 68 MOA ring around it. That ring is a real feature
+       of a holographic sight and not decoration - it is the coarse mark the
+       eye finds first - so drawing it on a sight that does not have one would
+       make a plain red dot claim a sight picture it does not offer. Collimated
+       and projected the same way otherwise, which is why it shares the
+       renderer's path with HOLOGRAPHIC rather than the HUD's with CHEVRON. */
+    WEAPON_RETICLE_DOT
 } WeaponReticleKind;
 
 typedef struct {
@@ -58,15 +84,14 @@ typedef struct {
     float ads_time;
 } SightSpec;
 
-/* The EOTech EXPS2. Holographic rather than reflex, which is why the reticle
-   kind is named for what it is: the dot is projected at infinity, so it stays
-   on the target when the shooter's eye moves off the sight's axis. That fact
-   is what the renderer draws, and it is why the reticle is a quad on the gun
-   rather than a mark on the screen. */
-extern const SightSpec SIGHT_HOLOGRAPHIC;
+/* Every optic there is. Which ones exist is said in sight_list.h, beside a line
+   each on what they are; what they are made of is said in sights.c. Neither is
+   repeated here, because a third place to say it is a third place for it to be
+   wrong.
 
-/* The magnified prism. Still the renderer's boxes - models/attachments/sight_mid
-   is waiting for its mesh - which is exactly what a null mesh_path says. */
-extern const SightSpec SIGHT_PRISM_2X;
+   To iterate over these rather than name one, include sight_registry.h. */
+#define SIGHT(id) extern const SightSpec SIGHT_##id;
+#include "gameplay/sight_list.h"
+#undef SIGHT
 
 #endif

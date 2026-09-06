@@ -7,8 +7,8 @@
 
 /* Everything that makes one gun feel different from another, as data. The
    weapon code holds a pointer to one of these and reads it; it has no numbers
-   of its own. Adding a gun is a new entry in weapon_specs.c, not a new branch
-   anywhere.
+   of its own. Adding a gun is a new file in src/gameplay/weapons/, not a new
+   branch anywhere.
 
    Only what genuinely varies between weapons lives here. How fast the view
    settles after a kick, how long a tracer is drawn for and how far the
@@ -398,8 +398,8 @@ typedef struct {
 
 /* One extern per weapon, generated from the one list. What each weapon IS is
    said in weapon_list.h, beside its name; what it is made of is said in
-   weapon_specs.c. Neither is repeated here, because a third place to say it is
-   a third place for it to be wrong.
+   src/gameplay/weapons/. Neither is repeated here, because a third place to
+   say it is a third place for it to be wrong.
 
    To iterate over these rather than name one, include weapon_registry.h. */
 #define WEAPON(id) extern const WeaponSpec WEAPON_SPEC_##id;

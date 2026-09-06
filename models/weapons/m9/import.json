@@ -1,0 +1,34 @@
+{
+  "generator": "tools/gun_to_glb.py",
+  "source": "source.fbx",
+  "output": "m9.glb",
+  "textures": "textures",
+
+  "_overall_length": "Muzzle to the back of the slide, in metres, and the one CHOSEN number in the file - every other dimension follows from it. A Beretta 92FS/M9 is 217mm, and the mesh agrees twice over: at that scale it stands 141mm from the bottom of the magazine floorplate to the top of the slide, against the catalogue's 140mm, and the slide is 24.6mm across against a real 25.5mm. Two independent dimensions landing inside a millimetre is what makes the 217 a measurement rather than an assumption.",
+  "overall_length": 0.217,
+  "length_axis": 2,
+
+  "_axes": "The viewmodel's +x, +y and -z, as axes of the file. This FBX is Z-forward, Y-up, X-across - the same frame the carbine arrived in. The muzzle is at high z: the last twentieth of the length is 3 units of slide against 14 at the other end, which is the grip hanging below the frame.",
+  "axes": ["-x", "+y", "-z"],
+
+  "_receiver": "Not stated, deliberately. On a rifle the origin goes on the bore at the back of the receiver, which is a seam somewhere in the middle of the mesh and has to be named. A pistol has no such seam: the back of the frame IS the back of the gun, so the rearmost point is the landmark and naming a part to find it would be naming the whole gun. Left out, and the importer takes the rearmost point.",
+
+  "_rail": "Not stated either, because this gun has none. An M9 wears iron sights and a smooth dovetailed slide, so there is nothing for an optic to clamp to and the spec carries no sight. That is a fact about the gun and not a gap in the import.",
+
+  "_max_texture": "Sampled by a fixed-function pipeline on a gun that fills a fraction of the screen. Past this the extra detail is not resolvable and the file is twice the size.",
+  "max_texture": 1024,
+
+  "_cut": "The irons, which this gun cannot take off by name. It is one node under one material - slide, frame, grip and sights together - so there is no seam to drop, and the only thing left to name them by is where they are. Both boxes are measured off the mesh: the rear notch stands at 7.86..8.55 over a slide whose rails top out at 7.87, and the front blade at 8.17..8.56 over the same. The heights cut just above the rail each one stands on rather than into it, which leaves the slide closed - a hole in it would be worse than a sight.\n\nThe front box matters twice. It reaches to 16.98 and the gun ends at 17.77, so the blade sits inside the last twentieth of the length that bore_line averages the barrel over: left in, it is not just drawn, it drags the bore up with it and every offset in the spec follows.",
+  "cut": [
+    {"_": "the rear notch, behind the ejection port", "along": [-1.05, -0.15], "above": 7.85},
+    {"_": "the front blade, on the nose of the slide", "along": [15.40, 17.05], "above": 7.88}
+  ],
+
+  "_target_albedo": "What the finished map has to average across the surface that samples it. Fixed-function lighting has one lamp, no shadowing and no exposure, so how bright a thing looks on screen is decided entirely by the numbers in its map - and every delivery arrives on a different artist's idea of mid-grey. The M4 landed at 37.6 on its own and everything imported since has been pulled to 37.7 to sit beside it.",
+  "target_albedo": 37.7,
+
+  "_materials": "The whole gun is one node under one material, which is also why there is no magazine_part on the spec: a magazine that cannot be named cannot be drawn apart from the frame during a reload. Splitting the slide off the frame here would be inventing a seam the artist did not model. The artist's normal, roughness and metallic maps are not checked in - the renderer has one lamp and no normal mapping, so nothing could read them.",
+  "materials": {
+    "m9_body": {"source": ["M9_Material"], "map": "M9_Colour.png"}
+  }
+}

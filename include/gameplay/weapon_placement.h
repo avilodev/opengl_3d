@@ -3,13 +3,15 @@
 
 #include "gameplay/weapon_spec.h"
 
+#include <stddef.h>
+
 /* Tuning a weapon's placement without rebuilding, and baking it back to C.
 
-   THE NUMBERS IN weapon_specs.c ARE STILL THE REAL ONES. This is scaffolding
-   around them, and it is meant to come down: a weapon is tuned here and then
-   baked into a C literal, which is what ships. A release build does not open a
-   file, cannot fail to parse one, and behaves exactly as it did before any of
-   this existed.
+   THE NUMBERS IN src/gameplay/weapons/ ARE STILL THE REAL ONES. This is
+   scaffolding around them, and it is meant to come down: a weapon is tuned
+   here and then baked into a C literal, which is what ships. A release
+   build does not open a file, cannot fail to parse one, and behaves exactly
+   as it did before any of this existed.
 
    What it is for is the loop. Finding where a hand closes on a new mesh is
    twenty rounds of nudge-a-number, rebuild, restart, walk back to whatever you
@@ -18,7 +20,7 @@
    edit placement.json and press F5.
 
    Why the numbers do not simply LIVE in JSON: the comments in weapon_spec.h
-   and weapon_specs.c are load-bearing - they are most of what says why a
+   and in each weapon's file are load-bearing - they are most of what says why a
    number is what it is - and JSON has nowhere to put them. A typo should stay
    a compile error. And what data buys is only the edit-and-see-it loop, which
    ends.
@@ -31,13 +33,23 @@
    declared either way so that a caller does not need an #ifdef of its own;
    without it they are inert and answer 0. */
 
+/* Where this weapon's placement.json is: the folder its mesh sits in. Answers
+   0 for a weapon with no mesh, which has no folder and cannot be tuned this
+   way - the right answer rather than a gap, since a weapon still drawn from
+   boxes has nothing on screen to tune a grip against.
+
+   Real in every build, unlike everything below it: it is string work, and both
+   tools/placement_write.c and tools/placement_probe.c need the same answer the
+   loader uses rather than a second spelling of it. */
+int weapon_placement_path(const WeaponSpec* spec, char* out, size_t capacity);
+
 /* Reads models/<bucket>/<name>/placement.json over a weapon and returns how
    many fields it changed, or -1 if the file is there and will not parse. A
    file that is absent is not an error and answers 0: most weapons are baked,
    and a baked weapon has no placement file.
 
    The spec must be one the registry owns a mutable copy of - see
-   weapon_registry_tunable. Handing this a pointer to a const literal would be
+   weapon_registry_mutable. Handing this a pointer to a const literal would be
    undefined behaviour, which is why the tunable copies exist at all. */
 int weapon_placement_load(WeaponSpec* spec);
 
@@ -45,7 +57,7 @@ int weapon_placement_load(WeaponSpec* spec);
    build. Returns the number of weapons that had a file. */
 int weapon_placement_load_all(void);
 
-/* Prints the weapon's placement as C, in the shape weapon_specs.c states it,
+/* Prints the weapon's placement as C, in the shape a weapon's own file states it,
    ready to paste. This is how the scaffolding comes down: the numbers stop
    being data the moment somebody is happy with them.
 

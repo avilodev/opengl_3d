@@ -6,4 +6,26 @@ run.log
 __pycache__/
 obj-tune/
 bin/GameTuning.exe
-models/**/placement.json
+
+# placement.json is TRACKED. It used to be ignored, on the argument that it is
+# scaffolding: the C literals in src/gameplay/weapons/ are what ships, a
+# release build never opens the file, and a tuned weapon is meant to be baked
+# back with F6 and the file deleted. That argument still holds for what SHIPS.
+# What it got wrong is the session: a placement file is where a weapon's hold
+# is actually worked out, that work is worth keeping and sharing, and losing it
+# to a clean checkout is worse than the risk below.
+#
+# The risk, stated so it is not a surprise: a tuning build LOADS these over the
+# C and the file wins. Edit a number in src/gameplay/weapons/ and forget the
+# JSON beside it, and bin/GameTuning.exe shows the old value while bin/Game.exe
+# shows the new one. Bake with F6 and keep the two in step.
+
+# The artist's raw texture drops. What the engine actually reads is baked into
+# the glb from a flat textures/ folder beside each asset, capped at the size
+# the importer samples at; these are the 4K-8K originals in both PBR workflows,
+# and for the carbine they were 688MB against the 6MB that is checked in.
+# Ignored rather than tracked: nothing here is recoverable from the repo, so a
+# drop is the artist's copy to keep or archive, not the build's to carry. The
+# carbine's was deleted outright rather than archived; if a lit renderer ever
+# arrives it comes back from the original delivery.
+models/**/textures_metalrough_specgloss/

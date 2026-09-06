@@ -19,6 +19,19 @@ typedef enum {
     ACTION_FIRE,
     ACTION_AIM,
     ACTION_RELOAD,
+    /* Puts the next optic in the rack on the held gun, and wraps.
+
+       Up here with the weapon's own controls rather than below with the
+       development keys, which is where it started life. It was a way to check
+       the two halves of a mount height against each other - the number most
+       likely to be wrong on a new asset and the one least visible when it is,
+       because a sight sitting a few millimetres proud of its rail looks like a
+       sight and only looks wrong beside one that fits. That is still the
+       cheapest way to see it. But there are four optics now and they differ in
+       what they cost to look through as much as in how they sit, so choosing
+       between them is a thing the player does, and it works in a shipping
+       build. See gameplay/sight_registry.h. */
+    ACTION_NEXT_SIGHT,
     ACTION_TOGGLE_VIEW,
     ACTION_FRONT_VIEW,
     ACTION_PAUSE,
@@ -34,8 +47,8 @@ typedef enum {
        one, for the same reason the line above is: one weapon is chosen at spawn
        and there is no switching in the game this is a game of. What it buys is
        that testing the fourth weapon is a keypress rather than a rebuild - the
-       loop it replaces was edit weapon_specs.c, rebuild, restart, and walk back
-       to whatever you were looking at.
+       loop it replaces was edit the weapon's file, rebuild, restart, and
+       walk back to whatever you were looking at.
 
        It goes when weapon switching becomes a thing the player does, at which
        point what replaces it is a binding rather than a debug one. */
@@ -46,7 +59,7 @@ typedef enum {
        that is and why it is scaffolding rather than the shipping format. */
     ACTION_DEBUG_RELOAD_PLACEMENT,
     /* Prints the held weapon's placement as C, ready to paste into
-       weapon_specs.c. How the scaffolding comes down. */
+       its file in src/gameplay/weapons/. How the scaffolding comes down. */
     ACTION_DEBUG_BAKE_PLACEMENT,
     ACTION_COUNT
 } Action;

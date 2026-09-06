@@ -38,7 +38,7 @@
    hands close on, and what kind of grip it is. Everything about the arms
    themselves stays here; where the shoulders have to be to reach those points is
    solved from them the first frame a weapon is drawn. So a new gun is two
-   measurements in weapon_specs.c and nothing in this file.
+   measurements in src/gameplay/weapons/ and nothing in this file.
 
    The blends arrive already resolved - each one put through the weapon's own
    accessor, so the precedence between them is settled before it gets here. */

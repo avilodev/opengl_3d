@@ -238,7 +238,7 @@ void arm_measure_grip_centre(const SkinnedModel* model, const Pose* fist,
    having to convert the other's.
 
    ONLY THE FIRING GRIP WANTS THIS, and the specs say which points are which.
-   weapon_specs.c calls grip_right "the middle of it - which is what a fist
+   A weapon's file calls grip_right "the middle of it - which is what a fist
    closes on", and that is a point on the gun: hand it to a solver that reaches
    with the wrist and the fist shuts on the air in front of the grip. It calls
    grip_left the place "the support wrist sits just under it", and the reload

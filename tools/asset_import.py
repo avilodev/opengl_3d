@@ -18,7 +18,7 @@ cent that was copied.
 The other thing this exists for: a number a machine computed and a human
 retyped is a number that can be retyped wrong, and nothing downstream can tell.
 tools/scope_to_glb.py used to MEASURE the optic's rail height and print it for
-somebody to copy into weapon_specs.c; the saya's depth reached a probe the same
+somebody to copy into a weapon's spec; the saya's depth reached a probe the same
 way, as `#define SAYA_DEPTH 0.7907f`. write_placement is how a measurement gets
 to the code that needs it without passing through a person.
 
@@ -73,13 +73,44 @@ class Manifest:
 # --------------------------------------------------------------------------
 # Reading the source
 
+def _compose(outer, inner):
+    """Two (linear, translation) transforms as one, outer applied second."""
+    ol, ot = outer
+    il, it = inner
+    linear = [[sum(ol[i][k] * il[k][j] for k in range(3)) for j in range(3)]
+              for i in range(3)]
+    translation = [sum(ol[i][j] * it[j] for j in range(3)) + ot[i]
+                   for i in range(3)]
+    return linear, translation
+
+
+def _world_matrix(objects, parents, oid, cache):
+    """A node's transform all the way up to the scene root.
+
+    A node's own matrix places it in its PARENT's space, not in the file's, and
+    those are the same thing only while the scene is flat. Every asset before
+    the carbine was flat, so folding one matrix was folding all of them, and
+    this walk would have been a loop that never ran twice. The carbine's optic
+    is a lens parented to the sight body: fold only the lens's own matrix and
+    the glass lands at the world origin at a quarter scale, inside nothing,
+    which is a wrong answer that draws without erroring."""
+    if oid in cache:
+        return cache[oid]
+    local = fbx_mesh.node_matrix(objects[oid])
+    parent = parents.get(oid)
+    if parent is not None and parent in objects and objects[parent].name == 'Model':
+        local = _compose(_world_matrix(objects, parents, parent, cache), local)
+    cache[oid] = local
+    return local
+
+
 def load_parts(path):
     """[(node name, material name, triangle group)] for every mesh in the file.
 
     Node transforms are folded into the vertices here - including scaling
-    pivots, which the katana's node has and which fbx_mesh.node_matrix handles -
-    so what comes back is already in the file's own world space and the runtime
-    has no scene graph to walk.
+    pivots, which the katana's node has and which fbx_mesh.node_matrix handles,
+    and including every ancestor's - so what comes back is in the file's own
+    world space and the runtime has no scene graph to walk.
 
     An FBX material index is an offset into the MODEL's own material
     connections, in the order they appear in the file, which is why the names
@@ -87,7 +118,9 @@ def load_parts(path):
     root, _ = fbx.load(path)
     objects, names = fbx.index_objects(root)
     children, _ = fbx.connections(root)
-    parts = []
+    parents = {child: parent
+               for parent, kids in children.items() for child in kids}
+    cache, parts = {}, []
     for oid, node_name in names.items():
         node = objects[oid]
         if node.name != 'Model' or node.props[2] != 'Mesh':
@@ -96,7 +129,7 @@ def load_parts(path):
         geometry = next(o for o in linked if o.name == 'Geometry')
         materials = [fbx._clean(o.props[1]) for o in linked
                      if o.name == 'Material']
-        linear, translation = fbx_mesh.node_matrix(node)
+        linear, translation = _world_matrix(objects, parents, oid, cache)
         groups = fbx_mesh.extract(geometry, linear, translation)
         for index, group in sorted(groups.items()):
             material = materials[index] if index < len(materials) else materials[0]
@@ -202,9 +235,137 @@ def scale_for(low, high, axis, overall_length):
 
 
 # --------------------------------------------------------------------------
+# Optics
+
+def rail_seat(groups):
+    """Y of the flat an optic rests on when it is clamped to a rail.
+
+    Not the model's lowest point: the clamp jaw wraps around the sides of the
+    rail and hangs several millimetres below its top face, so the bounding box
+    would put the sight that much too low. The seat is the largest horizontal
+    downward-facing surface in the bottom half, which on both optics so far is
+    the only thing it could be.
+
+    Here rather than in one optic's script because there are two of them now,
+    and because this is the sight's half of a mount height whose other half is
+    measured off a gun - a pair of numbers that has to be taken the same way at
+    both ends or their sum means nothing."""
+    area = {}
+    for group in groups:
+        points, normals = vertices(group), group['normals']
+        for i in range(0, len(group['indices']), 3):
+            a, b, c = group['indices'][i:i + 3]
+            if normals[a * 3 + 1] > -0.9:
+                continue
+            triangle = [points[a], points[b], points[c]]
+            height = sum(v[1] for v in triangle) / 3.0
+            u = [triangle[1][j] - triangle[0][j] for j in range(3)]
+            v = [triangle[2][j] - triangle[0][j] for j in range(3)]
+            cross = (u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2],
+                     u[0] * v[1] - u[1] * v[0])
+            size = 0.5 * sum(c * c for c in cross) ** 0.5
+            area[round(height, 1)] = area.get(round(height, 1), 0.0) + size
+    low = min(v[1] for g in groups for v in vertices(g))
+    high = max(v[1] for g in groups for v in vertices(g))
+    candidates = {y: a for y, a in area.items() if y < (low + high) * 0.5}
+    return max(candidates, key=candidates.get)
+
+
+# --------------------------------------------------------------------------
+# Occlusion
+
+def _occluded(folder, name, ao=None, strength=1.0):
+    """A base colour map with the artist's occlusion multiplied into it.
+
+    One function because the map that is MEASURED and the map that is WRITTEN
+    have to be the same map. surface_albedo and texture_png each used to fold
+    the occlusion in themselves, which was fine while they agreed and is the
+    kind of duplication that stops agreeing the moment one of them learns
+    something - as one of them just did.
+
+    `strength` is what it learned, lifted out of tools/scope_to_glb.py where
+    the optic had been doing it alone. An occlusion map at full strength
+    darkens the flats along with the crevices; the MP7's halves its whole
+    surface, and the albedo gain then spends itself undoing that rather than
+    lighting the gun. Pulling the map toward white by however much strength is
+    left off keeps the crevices and gives the flats back."""
+    from PIL import Image, ImageChops
+    image = Image.open(os.path.join(folder, name)).convert('RGB')
+    if not ao:
+        return image
+    occlusion = Image.open(os.path.join(folder, ao)).convert('L')
+    if occlusion.size != image.size:
+        occlusion = occlusion.resize(image.size, Image.LANCZOS)
+    if strength < 1.0:
+        occlusion = occlusion.point(
+            lambda v: int(round(255.0 - strength * (255.0 - v))))
+    return ImageChops.multiply(image, Image.merge('RGB', (occlusion,) * 3))
+
+
+# --------------------------------------------------------------------------
+# Albedo
+
+def samples(group, pixels, width, height):
+    """(triangle area, the texel it reads) for every triangle in the group.
+
+    Sampled at the centroid. A triangle covers many texels, but what is being
+    asked here is which island a triangle sits on and roughly how bright that
+    island is, and for both of those one sample in the middle is the answer."""
+    P, UV, I = group['positions'], group['uvs'], group['indices']
+    for i in range(0, len(I), 3):
+        a, b, c = I[i], I[i + 1], I[i + 2]
+        va, vb, vc = P[a*3:a*3+3], P[b*3:b*3+3], P[c*3:c*3+3]
+        e1 = [vb[k] - va[k] for k in range(3)]
+        e2 = [vc[k] - va[k] for k in range(3)]
+        cross = (e1[1]*e2[2] - e1[2]*e2[1], e1[2]*e2[0] - e1[0]*e2[2],
+                 e1[0]*e2[1] - e1[1]*e2[0])
+        area = 0.5 * sum(v * v for v in cross) ** 0.5
+        u = (UV[a*2] + UV[b*2] + UV[c*2]) / 3.0
+        v = (UV[a*2+1] + UV[b*2+1] + UV[c*2+1]) / 3.0
+        x = min(width - 1, max(0, int(u % 1.0 * (width - 1))))
+        y = min(height - 1, max(0, int(v % 1.0 * (height - 1))))
+        yield area, pixels[x, y]
+
+
+def surface_albedo(folder, materials, parts, ao_strength=1.0):
+    """The mean grey this asset's SURFACE reads, area-weighted, over the maps
+    as they will be baked - occlusion folded in, gain not yet applied.
+
+    Over the surface and not over the images, because a 4096px map on a part
+    the size of a trigger guard says almost nothing about what the gun looks
+    like and a 1024px one wrapped round the whole receiver says nearly all of
+    it. Only the triangles that actually read a texel get a vote, weighted by
+    how much of the gun they are.
+
+    This is what makes two assets comparable. Fixed-function lighting has one
+    lamp, no shadowing and no exposure, so how bright a thing looks is decided
+    entirely by the numbers in its map - and an artist's idea of mid-grey is
+    not portable between deliveries. The M4 landed at 37.6 by luck and the
+    EXPS2 was pulled to 37.7 to match it; anything imported since is measured
+    against that same figure rather than eyeballed against a screenshot."""
+    from PIL import Image
+    import os as _os
+    total = weighted = 0.0
+    for name, spec in materials.items():
+        if 'map' not in spec:
+            continue
+        groups = [g for _, material, g in parts if material == name]
+        if not groups:
+            continue
+        image = _occluded(folder, spec['map'], spec.get('ao'), ao_strength)
+        grey = image.convert('L')
+        pixels, (width, height) = grey.load(), grey.size
+        for area, texel in samples(merge(groups), pixels, width, height):
+            total += area
+            weighted += area * texel
+    return weighted / total if total else 0.0
+
+
+# --------------------------------------------------------------------------
 # Textures
 
-def texture_png(folder, name, ao=None, max_size=1024, gain=None):
+def texture_png(folder, name, ao=None, max_size=1024, gain=None,
+                ao_strength=1.0):
     """A base colour map as PNG bytes, or None if the file is not there.
 
     `ao` is multiplied in. Fixed-function lighting has one lamp and no
@@ -215,16 +376,10 @@ def texture_png(folder, name, ao=None, max_size=1024, gain=None):
     `max_size` caps the edge. These are sampled by a fixed-function pipeline on
     something that fills a fraction of the screen, so past a point the extra
     detail is not resolvable and the file is twice the size."""
-    from PIL import Image, ImageChops
-    path = os.path.join(folder, name)
-    if not os.path.exists(path):
+    from PIL import Image
+    if not os.path.exists(os.path.join(folder, name)):
         return None
-    image = Image.open(path).convert('RGB')
-    if ao:
-        occlusion = Image.open(os.path.join(folder, ao)).convert('L')
-        if occlusion.size != image.size:
-            occlusion = occlusion.resize(image.size, Image.LANCZOS)
-        image = ImageChops.multiply(image, Image.merge('RGB', (occlusion,) * 3))
+    image = _occluded(folder, name, ao, ao_strength)
     if gain is not None:
         image = image.point(lambda v: min(255, round(v * gain)))
     if max(image.size) > max_size:
@@ -306,9 +461,9 @@ def write_measured(folder, values):
     is FACTS ABOUT THE MESH, written by a machine, overwritten every import,
     and never edited by hand. placement.json beside it is the tuning overlay -
     spec fields a person is nudging, hand-edited, and deleted once its numbers
-    are baked back into weapon_specs.c. Some numbers appear in both, which is
-    exactly the interesting case: it means a measurement and a tuned value can
-    be compared.
+    are baked back into the weapon's own file in src/gameplay/weapons/. Some
+    numbers appear in both, which is exactly the interesting case: it means a
+    measurement and a tuned value can be compared.
 
     Written sorted and with a trailing newline so that re-running an import
     that changed nothing leaves no diff."""

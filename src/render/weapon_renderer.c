@@ -421,13 +421,22 @@ static void draw_holographic_reticle(const Weapon* weapon, float world_fov,
        The circle is dimmer than the dot on purpose. On the real optic it is the
        coarse mark and the dot is the fine one, and drawn at equal brightness the
        circle wins the eye simply by being bigger - which would make a precise
-       sight feel like a wide one. */
-    draw_reticle_disc(RETICLE_GLOW_DEGREES, 1.0f, 0.22f, 0.16f, dim * 0.18f);
-    draw_reticle_ring(RETICLE_CIRCLE_DEGREES,
-                      RETICLE_DISTANCE *
-                      tanf(RETICLE_CIRCLE_WIDTH_DEGREES * MATH_DEG_TO_RAD),
-                      RETICLE_CIRCLE_SEGMENTS,
-                      1.0f, 0.26f, 0.20f, dim * 0.62f);
+       sight feel like a wide one.
+
+       And it is drawn only for the sight that HAS one. A holographic sight's
+       68 MOA ring is a feature of that reticle and not a house style for
+       collimated optics; a plain tube dot has the dot alone, and giving it the
+       ring would be the sight claiming a coarse mark it does not offer. The
+       emitter's bloom goes with the ring, because what it is is the ring's own
+       glow bleeding around it. */
+    if (firearm->sight->reticle == WEAPON_RETICLE_HOLOGRAPHIC) {
+        draw_reticle_disc(RETICLE_GLOW_DEGREES, 1.0f, 0.22f, 0.16f, dim * 0.18f);
+        draw_reticle_ring(RETICLE_CIRCLE_DEGREES,
+                          RETICLE_DISTANCE *
+                          tanf(RETICLE_CIRCLE_WIDTH_DEGREES * MATH_DEG_TO_RAD),
+                          RETICLE_CIRCLE_SEGMENTS,
+                          1.0f, 0.26f, 0.20f, dim * 0.62f);
+    }
     draw_reticle_disc(RETICLE_DOT_DEGREES, 1.0f, 0.30f, 0.24f, dim);
     glDisable(GL_BLEND);
     if (was_culling) glEnable(GL_CULL_FACE);
@@ -477,7 +486,7 @@ static void draw_body_auto_pistol(void) {
 /* The rifle before there was a mesh for it, and still what draws if the mesh
    will not load: longer everywhere than the sidearm, with a full-length barrel
    out past a vented handguard, a deeper receiver, a longer rail, and a stock
-   behind the grip. Its proportions are the ones weapon_specs.c is tuned to, so
+   behind the grip. Its proportions are the ones the weapon files are tuned to, so
    the fallback puts the muzzle and the rail where the real gun has them. */
 static void draw_body_rifle(void) {
     /* Receiver. */
@@ -954,7 +963,8 @@ void weapon_renderer_draw_viewmodel(const Weapon* weapon,
        the glass is available to mask to. */
     const FirearmSpec* firearm = weapon_spec_firearm(weapon->spec);
     if (firearm && firearm->sight &&
-        firearm->sight->reticle == WEAPON_RETICLE_HOLOGRAPHIC)
+        (firearm->sight->reticle == WEAPON_RETICLE_HOLOGRAPHIC ||
+         firearm->sight->reticle == WEAPON_RETICLE_DOT))
         draw_holographic_reticle(weapon, camera->fov_degrees, aspect_ratio);
 
     /* Off the gun and back onto the body, which is where the rest of this pass

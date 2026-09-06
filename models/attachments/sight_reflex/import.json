@@ -1,0 +1,42 @@
+{
+  "generator": "tools/reflex_to_glb.py",
+  "source": "source.fbx",
+  "output": "sight_reflex.glb",
+  "textures": "textures",
+
+  "_overall_length": "Front of the hood to the back of the body, in metres. The artist did not state a scale - UnitScaleFactor is the exporter's untouched 1.0, which says nothing - so it is inferred from the one real-world standard the file contains. The mount's underside carries a 20.84-unit channel, and the rail it straddles is a MIL-STD-1913 Picatinny at 21.2mm across; that puts the file at 1.017mm per unit, and the 59.003-unit body at 60.0mm. Every other dimension follows, and they all land where an open reflex sight should: a 28.2 x 26.2mm window, 44.9mm tall on its mount, 35.2mm across the turrets. This is the one CHOSEN number in the file, so it is stated with its working rather than asserted.",
+  "overall_length": 0.0600,
+  "length_axis": 2,
+
+  "_axes": "The viewmodel's x, y and z as signed axes of the file - identity, because this FBX is already X-right, Y-up, Z-back. Forward is the viewmodel's -z and so the file's -Z, which is where the lens is: the pane sits at Z -29.6..-24.7 and the emitter that projects onto it at Z +8.4, behind it and low, exactly where an open reflex puts its LED. A sight imported the other way round would look like a sight and aim out of the shooter's eye.",
+  "axes": ["+x", "+y", "+z"],
+
+  "max_texture": 1024,
+
+  "_reticle": "The origin, and the one landmark here that is authored rather than inferred. The artist left a 14-triangle plane flat against the lens, 1.64 units square, centred on the optical axis at the pane's mid-thickness - a marker for where the dot goes. That is the point the eye lines up with and so the point every number on the spec is measured from, and using it means this optic's origin is the artist's own answer instead of the centre of a bounding box.\n\nIt is NOT exported. The dot is drawn by the renderer at the centre of the screen, because it has to sit exactly where the bullet goes and the bullet leaves the eye; a quad in the mesh would be a second dot that disagreed with the first the moment the gun moved.",
+  "reticle": "Material.002",
+
+  "_glass": "The lens. The one surface that must not be opaque - the whole point of a reflex sight is that the target stays visible through it - and it is also what the stencil mask is built from, so an optic whose glass is missing loses the window and not just the look.\n\nThis material covers two things: the pane, and the emitter lens down at the back of the housing. Both are glass and both draw translucent, so both belong to this primitive; only the pane is the WINDOW, which is what window_from_reticle is for.",
+  "glass": "Optic.003",
+  "glass_tint": [0.40, 0.56, 0.60, 0.17],
+
+  "_window_from_reticle": "How far along the optical axis the glass still counts as the window, in metres. The pane reaches 2.5mm either side of the reticle and the emitter sits 36mm behind it, so anything short of that separates them; 6mm says which one is meant without pretending to a precision the split does not need. What it measures is window_width and window_height - the aperture the reticle is seen through - and an emitter averaged into that would report a window twice as deep as the glass actually is.",
+  "window_from_reticle": 0.006,
+
+  "_seat": "The flat this mount rests on when it is clamped to a rail. Found the way the EXPS2's is - the largest downward-facing surface in the bottom half - but looked for over the MOUNT NODE ALONE, which is the correction the carbine's optic already had to make from the other direction. Run over the whole model the rule lands on Y=10.1, the underside of the sight body where it meets its own riser: a broad flat, higher up, that outweighs the foot. Over the mount by itself it lands on Y=0.09 with 511 units of area against the next candidate's 10, because this mount is flat-bottomed and there is nothing else it could be.",
+  "seat_node": "RDS Mount",
+
+  "_target_albedo": "What the finished maps have to average across the surface that samples them. Fixed-function lighting has one lamp, no shadowing and no exposure, so how bright a thing looks on screen is decided entirely by the numbers in its map - and every delivery arrives on a different artist's idea of mid-grey. The M4 landed at 37.6 on its own, the EXPS2 was pulled to 37.7 to sit beside it, and so was the carbine; this is that same figure. One gain across every material, not one per material, so the relative values the artist chose survive.",
+  "target_albedo": 37.7,
+
+  "_materials": "This FBX carries nine materials and NOT ONE texture link - there are no Texture or Video objects in it at all - so which map belongs to which material is not something the file says. It is settled here, by UV range, and stated so that a wrong pairing is an argument to have rather than a mystery:\n\n  * The five that tile - Skin.001 across 20 repeats, Material across 4, Bolt and Button across 1 - are the metal of the housing, the turrets and the screws. They all read the same scratched-steel map at their own densities, so they are merged into ONE primitive: one image decoded, one copy in video memory, one draw.\n  * Material.004 is the only 0-to-1 unwrap in the file, and the only sheet that is a 0-to-1 atlas is the markings - the maker's name, the model number, the adjustment dials. They were authored for each other.\n  * Rubber.001's UVs are all pinned to a single point, so there is no unwrap to sample and a map would read one texel across the whole part. It gets the rubber's own mean as a flat colour instead, which is what sampling one texel would have given anyway and costs no texture to do.",
+  "materials": {
+    "Skin.001":     {"map": "metal.jpg", "merge": "metal"},
+    "Material":     {"map": "metal.jpg", "merge": "metal"},
+    "Button":       {"map": "metal.jpg", "merge": "metal"},
+    "Bolt":         {"map": "metal.jpg", "merge": "metal"},
+    "Material.003": {"map": "metal.jpg", "merge": "metal"},
+    "Material.004": {"map": "markings.png"},
+    "Rubber.001":   {"flat": "rubber.jpg"}
+  }
+}

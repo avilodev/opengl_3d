@@ -1,0 +1,13 @@
+{
+  "view_right": 0.1480,
+  "view_down": 0.1250,
+  "view_forward": 0.3850,
+  "grip_right": [0.0000, -0.0600, -0.1680],
+  "grip_left": [0.0000, -0.0750, -0.3130],
+  "rail_height": 0.0516,
+  "rail_forward": 0.1400,
+  "view_ads_forward": -0.4000,
+  "muzzle_up": 0.0000,
+  "muzzle_forward": 0.4080,
+  "_": 0
+}

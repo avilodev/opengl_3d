@@ -66,58 +66,9 @@ MAX_TEXTURE = MANIFEST['max_texture']
 # The shared ones, under the names this file already used.
 merge = ai.merge
 vertices = ai.vertices
-
-
-def rail_seat(groups):
-    """Y of the flat the mount rests on when it is clamped to a rail.
-
-    Not the model's lowest point: the clamp jaw wraps around the sides of the
-    rail and hangs several millimetres below its top face, so the bounding box
-    would put the sight that much too low. The seat is the largest horizontal
-    downward-facing surface in the bottom half, which on this mesh is the only
-    thing it could be.
-    """
-    area = {}
-    for group in groups:
-        points, normals = vertices(group), group['normals']
-        for i in range(0, len(group['indices']), 3):
-            a, b, c = group['indices'][i:i + 3]
-            if normals[a * 3 + 1] > -0.9:
-                continue
-            triangle = [points[a], points[b], points[c]]
-            height = sum(v[1] for v in triangle) / 3.0
-            u = [triangle[1][j] - triangle[0][j] for j in range(3)]
-            v = [triangle[2][j] - triangle[0][j] for j in range(3)]
-            cross = (u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2],
-                     u[0] * v[1] - u[1] * v[0])
-            size = 0.5 * sum(c * c for c in cross) ** 0.5
-            area[round(height, 1)] = area.get(round(height, 1), 0.0) + size
-    low = min(v[1] for g in groups for v in vertices(g))
-    high = max(v[1] for g in groups for v in vertices(g))
-    candidates = {y: a for y, a in area.items() if y < (low + high) * 0.5}
-    return max(candidates, key=candidates.get)
-
-
-def samples(group, pixels, width, height):
-    """(triangle area, the texel it reads) for every triangle in the group.
-
-    Sampled at the centroid. A triangle covers many texels, but what is being
-    asked here is which island a triangle sits on and roughly how bright that
-    island is, and for both of those one sample in the middle is the answer."""
-    P, UV, I = group['positions'], group['uvs'], group['indices']
-    for i in range(0, len(I), 3):
-        a, b, c = I[i], I[i + 1], I[i + 2]
-        va, vb, vc = P[a*3:a*3+3], P[b*3:b*3+3], P[c*3:c*3+3]
-        e1 = [vb[k] - va[k] for k in range(3)]
-        e2 = [vc[k] - va[k] for k in range(3)]
-        cross = (e1[1]*e2[2] - e1[2]*e2[1], e1[2]*e2[0] - e1[0]*e2[2],
-                 e1[0]*e2[1] - e1[1]*e2[0])
-        area = 0.5 * sum(v * v for v in cross) ** 0.5
-        u = (UV[a*2] + UV[b*2] + UV[c*2]) / 3.0
-        v = (UV[a*2+1] + UV[b*2+1] + UV[c*2+1]) / 3.0
-        x = min(width - 1, max(0, int(u % 1.0 * (width - 1))))
-        y = min(height - 1, max(0, int(v % 1.0 * (height - 1))))
-        yield area, pixels[x, y]
+# Shared with the carbine's optic now that there are two of them.
+rail_seat = ai.rail_seat
+samples = ai.samples
 
 
 def bare_share(group, pixels, width, height):
@@ -214,7 +165,7 @@ def main():
     # The reticle: the centre of the window, on the window's own plane. The
     # dot of a holographic sight is projected onto that glass and centred in
     # it, so this is the point the eye lines up with and the point every
-    # number in weapon_specs.c is measured from.
+    # number in the gun's spec is measured from.
     pane = vertices(glass)
     origin = [sum(v[0] for v in pane) / len(pane),
               (min(v[1] for v in pane) + max(v[1] for v in pane)) * 0.5,

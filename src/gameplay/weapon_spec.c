@@ -69,9 +69,29 @@ float weapon_spec_view_ads_fov(const WeaponSpec* spec) {
     return gun ? gun->view_ads_fov : VIEWMODEL_FOV;
 }
 
+/* How long a weapon with no optic takes to come up.
+
+   An optic states its own, because how fast glass comes up is a property of
+   the glass. Iron sights are not glass and there is no SightSpec to hang the
+   number on, so it is here - once, for every gun that has none, because what
+   it measures is a gun being raised and that is the same motion on all of
+   them. Fast, and faster than either optic: there is nothing to find but the
+   post already in front of the eye.
+
+   It replaces a zero, and the zero was not merely a placeholder. The caller
+   divides the frame time by this, so a gun with no sight aimed in infinite
+   time per second - which reached approachf as an infinity and snapped, and on
+   any frame with no elapsed time at all reached it as a NaN and stayed one.
+   The aim value never recovers from that. It was reachable already - a katana
+   has no firearm half and took the same path - and went unseen because aiming
+   a sword changes nothing anyone can look at. A gun with irons is the first
+   weapon where it would have shown. */
+#define WEAPON_IRON_ADS_TIME 0.12f
+
 float weapon_spec_ads_time(const WeaponSpec* spec) {
     const FirearmSpec* gun = weapon_spec_firearm(spec);
-    return gun && gun->sight ? gun->sight->ads_time : 0.0f;
+    if (!gun) return WEAPON_IRON_ADS_TIME;
+    return gun->sight ? gun->sight->ads_time : WEAPON_IRON_ADS_TIME;
 }
 
 /* The shared carry. Assembled rather than stated, because the angles and the

@@ -14,8 +14,9 @@ enum { MODEL_UNTRIED, MODEL_LOADED, MODEL_MISSING };
 /* A cache keyed by the path itself rather than a table with one enum per mesh.
    An optic states its own file on its SightSpec, so adding the next sight is a
    line in sights.c and a glb - not a line here, a case in a switch, and a new
-   enumerator, which is what it used to cost. */
-#define WEAPON_MESH_SLOTS 8
+   enumerator, which is what it used to cost.
+
+   How many it holds is WEAPON_MESH_SLOTS, in the header. */
 
 typedef struct {
     const char* path;                /* null while the slot is free */
@@ -36,9 +37,31 @@ static const StaticModel* mesh(const char* path) {
         }
         if (!g_meshes[i].path && !entry) entry = &g_meshes[i];
     }
-    /* Every slot taken by a different mesh. Costs the look of one optic rather
-       than trampling another's, which is the same bargain as a missing file. */
-    if (!entry) return NULL;
+    /* Every slot taken by a different mesh. Still costs the look rather than
+       trampling another's, which is the same bargain as a missing file - but it
+       SAYS SO now, and that is the whole of what went wrong here. The count is
+       derived from the weapon and sight lists (see WEAPON_MESH_SLOTS), so this
+       should be unreachable; it was reachable for a while, and because this
+       returned NULL without a word, what reached the player was a gun that was
+       a gun on one run and a crate on the next. A fallback nobody is told
+       about is indistinguishable from a bug in the importer.
+
+       Once per path, not once per frame: this is called from the draw path. */
+    if (!entry) {
+        static const char* complained[WEAPON_MESH_SLOTS * 2];
+        static int complaints = 0;
+        int said = 0;
+        for (int i = 0; i < complaints; ++i)
+            if (complained[i] == path) said = 1;
+        if (!said) {
+            if (complaints < (int)(sizeof complained / sizeof complained[0]))
+                complained[complaints++] = path;
+            printf("mesh cache full (%d slots): %s falls back to boxes\n",
+                   WEAPON_MESH_SLOTS, path);
+            fflush(stdout);
+        }
+        return NULL;
+    }
 
     if (!entry->path) {
         entry->path = path;

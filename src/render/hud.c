@@ -254,8 +254,17 @@ static void draw_crosshair(const Weapon* weapon, float fov_degrees,
                                           0.0f, 1.0f)
                           : 1.0f;
     float alpha = weapon->is_reloading ? 0.28f : 0.55f + tightness * 0.35f;
-    /* The ticks hand over to the reticle as the scope comes up. */
-    alpha *= show_sight ? 1.0f - weapon->ads : 1.0f;
+    /* The ticks hand over to the reticle as the scope comes up - but only when
+       there is a reticle to hand over TO. A gun with no optic has nothing else
+       on screen saying where the round goes: its irons are not drawn, and the
+       round leaves the eye rather than the barrel, so fading these out on the
+       way into a sightless aim leaves the player nothing to aim with and a
+       shot that lands where the crosshair used to be. Both handguns were in
+       exactly that state - see the note in src/gameplay/weapons/m9.c, whose
+       reasoning was that the bore lands on the crosshair, which is true and
+       was being undone here. */
+    int hands_over = show_sight && gun && gun->sight;
+    alpha *= hands_over ? 1.0f - weapon->ads : 1.0f;
     float red = weapon->ammo_in_magazine > 0 ? 0.92f : 0.95f;
     float green = weapon->ammo_in_magazine > 0 ? 0.96f : 0.42f;
     float blue = weapon->ammo_in_magazine > 0 ? 1.0f : 0.36f;

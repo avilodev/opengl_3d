@@ -1960,7 +1960,8 @@ static void check_blade_faces(const SkinnedModel* model) {
    the same way or the scope window slides off the glass it is a window into.
 
    The check that matters most is the last one. Everything else here is feel,
-   and feel is a number in weapon_specs.c; the sights landing on the crosshair
+   and feel is a number in src/gameplay/weapons/; the sights landing on the
+   crosshair
    at every pitch is not negotiable, and it is what the aim fade exists for. */
 
 /* Where a camera-space point lands in the viewmodel's own projection, as a
@@ -2197,10 +2198,11 @@ static void check_neck(const WeaponSpec* spec, const SkinnedModel* model) {
            "at full follow, a look at the sky takes the gun out of frame");
 
     /* What that costs at the follow this weapon actually ships with, printed
-       rather than asserted: it is a feel decision, and weapon_specs.c is where
-       it is made. Worth having in front of whoever makes it. At a third the
-       rifle tips out of frame from the BACK - the stock goes and the barrel
-       stays, which is what a gun in the hands of a body looking up does. */
+       rather than asserted: it is a feel decision, and a weapon's own file is
+       where it is made. Worth having in front of whoever makes it. At a third
+       the rifle tips out of frame from the BACK - the stock goes and the
+       barrel stays, which is what a gun in the hands of a body looking up
+       does. */
     float stock[2], tip[2];
     neck_gun_point(spec, origin, 60.0f, 0.0f, stock);
     int on = neck_gun_point(spec, muzzle, 60.0f, 0.0f, tip) &&
@@ -2671,6 +2673,16 @@ int main(void) {
         check_melee_rides_hand(&model);
         check_blade_faces(&model);
         ArmRig rig;
+        /* The two handguns, before the rifle the rest of this file is written
+           around. They are here because they were NOT, and it cost something:
+           the reach window is the one check that catches a hold nobody can
+           actually adopt, and nothing was applying it to the weapons held at
+           arm's length - which are exactly the ones where an arm runs out of
+           length. A pistol pulled toward the eye folds its elbows rather than
+           straightening them, so it fails the window from the opposite end
+           from a rifle and just as invisibly. */
+        check_arms(&WEAPON_SPEC_M9, &model, &rig);
+        check_arms(&WEAPON_SPEC_MAGNUM_357, &model, &rig);
         if (check_arms(spec, &model, &rig)) {
             check_reload(spec, &rig);
             check_firing_wrist(spec, &model, &rig);
