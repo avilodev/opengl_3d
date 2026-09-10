@@ -129,6 +129,9 @@ void combatant_respawn(Combatant* combatant, float x, float y, float z,
     combatant->quiet_time = COMBAT_REGEN_DELAY;
     combatant->respawn_timer = 0.0f;
     combatant->flinch = 0.0f;
+    combatant->flinch_x = 0.0f;
+    combatant->flinch_z = 0.0f;
+    combatant->flinch_region = COMBATANT_REGION_CHEST;
     combatant->alive = 1;
 }
 
@@ -323,8 +326,11 @@ float combatant_damage(Combatant* combatant, int region, float damage) {
         combatant->health = 0.0f;
         combatant->alive = 0;
         combatant->respawn_timer = COMBAT_RESPAWN_DELAY;
-        /* A body that is not drawn cannot be seen flinching, and leaving the
-           rock on would have it inherited whole by whoever stands up next. */
+        /* A body playing its death clip is not also rocking on its spine, and
+           leaving the figure on would have it inherited whole by whoever stands
+           up next. The direction is left alone: nothing reads it at zero, and
+           it is what a death that wanted to fall away from the round would want
+           to look at. */
         combatant->flinch = 0.0f;
     }
     return taken;
@@ -338,20 +344,30 @@ float combatant_apply_damage(CombatantSet* set, const CombatantHit* hit,
     Combatant* combatant = &set->items[hit->index];
     float taken = combatant_damage(combatant, hit->region, damage);
 
-    /* Rocked AWAY from the round. The hit normal points back out of the body
-       at whoever fired, and the rig's own left is up cross forward, which for a
-       body facing +Z at zero heading is (cos yaw, 0, -sin yaw) - so this is how
-       much of the shot arrived on the body's left side. Negated, because a
-       round from the left throws the body to its right, and the rig reads
-       positive lean as a bend to its own left.
+    /* Which way the round was going, in world space. The hit normal points back
+       OUT of the body at whoever fired, so the travel is its opposite, and only
+       the horizontal part of it rocks anybody: straight down the cylinder's cap
+       this normalises to nothing, which is right, because a shot from directly
+       above does not throw a body in any direction.
 
-       Straight down the cylinder's cap this comes out at zero, which is right:
-       a shot from directly above does not rock anybody sideways. */
+       Left in world space rather than resolved against the body's facing here.
+       The rig is what knows which way the body is drawn - it has already turned
+       the chest to the look direction and twisted the legs back under it - and
+       a direction resolved against a heading this file holds would be a second
+       opinion about which way the body is pointing. */
     if (combatant->alive) {
-        float from_left =
-            hit->normal_x * cosf(combatant->yaw_degrees * MATH_DEG_TO_RAD) -
-            hit->normal_z * sinf(combatant->yaw_degrees * MATH_DEG_TO_RAD);
-        combatant->flinch = -clampf(from_left, -1.0f, 1.0f) * COMBAT_FLINCH_AMOUNT;
+        float dx = -hit->normal_x;
+        float dz = -hit->normal_z;
+        float length = sqrtf(dx * dx + dz * dz);
+        if (length > 1.0e-4f) {
+            combatant->flinch_x = dx / length;
+            combatant->flinch_z = dz / length;
+            /* Scaled by how much of the round arrived horizontally, so a
+               glancing shot up through the shoulder rocks less than one
+               straight through the chest. */
+            combatant->flinch = length * COMBAT_FLINCH_AMOUNT;
+            combatant->flinch_region = hit->region;
+        }
     }
 
     /* No figure for a round that took nothing off, which is what every round

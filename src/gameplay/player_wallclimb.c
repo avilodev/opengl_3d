@@ -32,7 +32,10 @@ static int find_climbable_wall(const PlayerController* player,
         /* Nothing to climb below the wall-run floor, and nothing to climb on a
            box the player has already cleared - that is a mantle. */
         if (player->y < MOVE_WALL_MIN_HEIGHT) continue;
-        if (player->y >= wall->height - 0.2f) continue;
+        if (player->y >= wall->top - 0.2f) continue;
+        /* Nor on one that starts above them: there is no surface at this
+           height to press against. */
+        if (player->y < wall->base) continue;
 
         float half_width = wall->width * 0.5f;
         float half_depth = wall->depth * 0.5f;

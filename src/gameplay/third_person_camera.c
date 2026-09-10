@@ -33,6 +33,8 @@ void third_person_camera_init(ThirdPersonCamera* camera) {
     camera->previous_vertical_velocity = 0.0f;
     camera->was_grounded = 1;
     camera->was_sliding = 0;
+    camera->downed = 0;
+    camera->held_view = CAMERA_VIEW_FIRST_PERSON;
 }
 
 /* The view mode, and the flag the rest of the engine reads it through. One
@@ -40,6 +42,18 @@ void third_person_camera_init(ThirdPersonCamera* camera) {
 static void set_view(ThirdPersonCamera* camera, CameraViewMode mode) {
     camera->view_mode = mode;
     camera->is_first_person = mode == CAMERA_VIEW_FIRST_PERSON;
+}
+
+void third_person_camera_set_downed(ThirdPersonCamera* camera, int downed) {
+    if (!camera || (!camera->downed) == (!downed)) return;
+    if (downed) {
+        camera->held_view = camera->view_mode;
+        camera->downed = 1;
+        set_view(camera, CAMERA_VIEW_THIRD_BEHIND);
+    } else {
+        camera->downed = 0;
+        set_view(camera, camera->held_view);
+    }
 }
 
 /* Which side of the screen a wall is on, so a lean or a kick goes the right
@@ -185,14 +199,15 @@ void third_person_camera_apply_look(ThirdPersonCamera* camera,
     camera->pitch_degrees = clampf(camera->pitch_degrees - command->look_y * sensitivity,
                                    VIEW_PITCH_MIN, VIEW_PITCH_MAX);
 
-    if (command->toggle_view_pressed)
+    /* Inert while the player is down - see `downed`. */
+    if (command->toggle_view_pressed && !camera->downed)
         set_view(camera, (camera->view_mode + 1) % CAMERA_VIEW_COUNT);
     /* And the shortcut straight to the front view, for looking at what the body
        is actually doing without cycling past the view behind it. It goes back
        to first person rather than to wherever it came from: a key that returns
        somewhere different each time it is pressed is a key nobody can use
        without looking. */
-    if (command->front_view_pressed)
+    if (command->front_view_pressed && !camera->downed)
         set_view(camera, camera->view_mode == CAMERA_VIEW_THIRD_FRONT
                  ? CAMERA_VIEW_FIRST_PERSON : CAMERA_VIEW_THIRD_FRONT);
 }

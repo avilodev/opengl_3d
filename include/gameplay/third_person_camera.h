@@ -65,6 +65,20 @@ typedef struct {
        there is no separate scope pass. */
     float scope_fov_degrees;
 
+    /* ---- being down ----
+       A dead player is watched rather than played, so the view leaves their
+       head: there is a body on the floor and a death worth seeing, and neither
+       of those is visible from inside the skull. `downed` is whether that is in
+       force and `held_view` is the mode to give back, because the view a player
+       chose is theirs and a death is not an opportunity to change it.
+
+       The view keys go inert while it holds, for the same reason: a player who
+       cycled the view while dead would be handed something different back from
+       what they picked, and a key that does nothing is easier to understand
+       than one whose effect is silently undone a few seconds later. */
+    int downed;
+    CameraViewMode held_view;
+
     /* Last frame's player state, kept here so the camera can spot a transition
        without gameplay having to publish events for the renderer's benefit. */
     float previous_vertical_velocity;
@@ -93,6 +107,12 @@ void third_person_camera_view_angles(const ThirdPersonCamera* camera,
                                      float* roll_degrees);
 void third_person_camera_update(ThirdPersonCamera* camera, const CameraCommand* command,
                                 const PlayerController* player, float delta_time);
+
+/* Down, or back up. Going down remembers the player's own view mode and forces
+   the one behind the body; coming back up restores what was remembered. Idempotent,
+   so it can be called every step with the body's `alive` flag rather than
+   guarded by an edge somebody has to detect. */
+void third_person_camera_set_downed(ThirdPersonCamera* camera, int downed);
 
 /* How far into the sight the view is, 0 to 1, and the FOV that sight zooms to. */
 void third_person_camera_set_zoom(ThirdPersonCamera* camera, float zoom,

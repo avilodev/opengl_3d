@@ -147,8 +147,12 @@ static void resolve_wall_collisions(PlayerController* player) {
     float step = player->is_grounded ? MOVE_STEP_UP_HEIGHT : 0.0f;
     for (int i = 0; i < ARENA_WALL_COUNT; ++i) {
         const ArenaWall* wall = &g_arena_walls[i];
-        if (player->y >= wall->height - 0.05f) continue;
-        if (wall->height <= player->y + step) continue;
+        if (player->y >= wall->top - 0.05f) continue;
+        if (wall->top <= player->y + step) continue;
+        /* Overhead entirely: a catwalk, a lintel, the floor of a storey above.
+           Without this every raised box would be a wall at ground level and no
+           doorway would have a way in. */
+        if (wall->base >= player->y + MOVE_PLAYER_HEIGHT) continue;
         float half_width = wall->width * 0.5f;
         float half_depth = wall->depth * 0.5f;
         float nearest_x = clampf(player->x, wall->x - half_width,
@@ -404,6 +408,18 @@ void player_locomotion_resolve_vertical(PlayerController* player,
            cleared. */
         float support = arena_support_height(player->x, player->z, PLAYER_RADIUS,
                                              previous_y + 0.001f);
+        /* Rising into an underside stops the climb rather than passing through
+           it. Measured from where the head started, so a player already inside
+           a box's span is not shoved by one they have partly cleared. */
+        if (player->vertical_velocity > 0.0f) {
+            float ceiling = arena_ceiling_height(player->x, player->z,
+                                                 PLAYER_RADIUS,
+                                                 previous_y + MOVE_PLAYER_HEIGHT);
+            if (player->y + MOVE_PLAYER_HEIGHT > ceiling) {
+                player->y = ceiling - MOVE_PLAYER_HEIGHT;
+                player->vertical_velocity = 0.0f;
+            }
+        }
         if (player->vertical_velocity <= 0.0f && player->y <= support) {
             player->y = support;
             player->vertical_velocity = 0.0f;

@@ -23,9 +23,45 @@ static void compose_base(const CharacterAnimation* animation,
    of settling, and a player who is already running again by then wants to be
    running, not finishing an animation about having landed. Zero means the role
    loops and never expires. */
+/* One bone of an authored pose: which bone, and the direction in the MODEL's
+   own space its own rest axis is turned to point along. */
+typedef struct {
+    const char* bone;
+    float x, y, z;
+} AuthoredBone;
+
+/* A pose built by hand because the library has no clip for it. `slot` is where
+   its resolved bone indices live on the animation, which is what keeps the
+   resolution at init instead of once per frame.
+
+   `reaches` says one arm ends up on `reach_target` rather than on its authored
+   direction - the pose gets the hand close and the solve puts it on the thing.
+   Only one pose may reach at a time, because the resolved arm bones are single
+   on the animation; a second reaching pose that used the OTHER arm would want
+   them per slot, and that is the day to make them per slot. */
+typedef struct {
+    int slot;
+    int reaches;
+    const char* reach_upper;
+    const char* reach_lower;
+    const char* reach_hand;
+    const float* elbow_pole;
+    int count;
+    const AuthoredBone* bones;
+} AuthoredPose;
+
+static const AuthoredPose HANG_AUTHORED;
+
 static const struct {
     const char* name;
     float hold;
+    /* Play through once and hold the last frame instead of wrapping. Only a
+       death wants this: every other role either loops because the body is still
+       doing the thing, or is a one-shot whose hold expires it. */
+    int clamp;
+    /* The bones this role points by hand over its base clip, or NULL for a role
+       the library actually has a clip for. */
+    const AuthoredPose* pose;
 } ROLES[CHARACTER_CLIP_COUNT] = {
     [CHARACTER_CLIP_IDLE]         = { "Idle_Loop",        0.0f },
     [CHARACTER_CLIP_WALK]         = { "Walk_Loop",        0.0f },
@@ -42,8 +78,17 @@ static const struct {
     [CHARACTER_CLIP_CLIMB]        = { "ClimbUp_1m",       0.0f },
     /* The hang's clip is only the pose it is built on top of - Pistol_Aim_Up,
        for its gripping fingers and its raised shoulders. What makes it a hang
-       is HANG_POSE below. */
-    [CHARACTER_CLIP_HANG]         = { "Pistol_Aim_Up",    0.0f },
+       is HANG_BONES below. */
+    [CHARACTER_CLIP_HANG]         = { "Pistol_Aim_Up",    0.0f, 0, &HANG_AUTHORED },
+    /* Two and a bit seconds of falling over, root pinned at the origin in the
+       non-root-motion library this rig loads - so a body drops where it was
+       shot rather than sliding two thirds of a metre off it. Clamped: what is
+       left on screen after it runs out is the corpse. */
+    [CHARACTER_CLIP_DEATH]        = { "Death01",           0.0f, 1, NULL },
+    /* And a second and a half of standing back up, also pinned. Held for its
+       own length rather than looping, because being alive is a state the
+       locomotion roles take over the instant this expires. */
+    [CHARACTER_CLIP_GET_UP]       = { "LayToIdle",         1.53f, 0, NULL },
 };
 
 /* The wall hang, authored rather than animated.
@@ -60,10 +105,7 @@ static const struct {
    The shape is the one Titanfall hangs in: the left hand up on the lip, the
    right arm down with the rifle hanging muzzle-first, the body straight, and
    the legs dangling with the knees a little bent. */
-static const struct {
-    const char* bone;
-    float x, y, z;
-} HANG_POSE[CHARACTER_HANG_BONES] = {
+static const AuthoredBone HANG_BONES[] = {
     {"spine_01",    0.00f, 0.99f, 0.10f},
     {"spine_02",    0.00f, 0.99f, 0.10f},
     {"spine_03",    0.00f, 0.99f, 0.08f},
@@ -110,6 +152,17 @@ static const struct {
    the reaching arm is on. */
 static const float HANG_ELBOW_POLE[3] = {1.0f, -0.25f, -0.45f};
 
+enum { AUTHORED_SLOT_HANG = 0 };
+
+#define HANG_BONE_COUNT ((int)(sizeof HANG_BONES / sizeof HANG_BONES[0]))
+_Static_assert(HANG_BONE_COUNT <= CHARACTER_AUTHORED_BONES,
+               "CHARACTER_AUTHORED_BONES must cover the longest authored pose");
+
+static const AuthoredPose HANG_AUTHORED = {
+    AUTHORED_SLOT_HANG, 1, "upperarm_l", "lowerarm_l", "hand_l",
+    HANG_ELBOW_POLE, HANG_BONE_COUNT, HANG_BONES,
+};
+
 /* ---- the facing split ----
 
    Which bones carry a turn, and how much of it each takes. Two channels, both
@@ -145,19 +198,48 @@ static const float HANG_ELBOW_POLE[3] = {1.0f, -0.25f, -0.45f};
    the reason the lean belongs here rather than on the body transform, where it
    used to swing the legs out from under a body that should have kept its feet
    planted. */
+/* `hit_body` and `hit_head` are MEASURED rather than chosen: they are how
+   Hit_Chest and Hit_Head distribute their bend across this chain at their own
+   peak frames, read straight off the library.
+
+     Hit_Chest, peak 0.33s, 49.6 deg total:
+       pelvis 20.9%  spine_01 0%  spine_02 19.2%  spine_03 19.3%
+       neck_01 13.4%  Head 27.2%
+     Hit_Head,  peak 0.23s, 38.5 deg total:
+       pelvis 0%     spine_01 0%  spine_02 10.3%  spine_03 10.3%
+       neck_01 22.7%  Head 56.6%
+
+   With one adaptation, stated because it is a departure from what was measured:
+   the animator put a fifth of the chest reaction on the PELVIS and nothing at
+   all on spine_01, and the pelvis is the one bone this layer may not touch -
+   the legs hang off it, and a body that folds at the hips is a body that stops
+   running. So the pelvis's share moves down to spine_01. The total bend is what
+   was measured; where the lowest fifth of it is hinged is not.
+
+   What the two columns really carry is the RATIO between rocking the body and
+   snapping the head, which is the whole of what tells a chest hit from a head
+   hit: roughly 60/40 for one and 20/80 for the other. */
 static const struct {
     const char* bone;
     float legs;
     float look;
     float lean;
+    float hit_body;
+    float hit_head;
 } TWIST_BONES[CHARACTER_TWIST_BONES] = {
-    {"pelvis",    1.00f,  0.00f,  0.00f},
-    {"spine_01", -0.34f,  0.00f,  0.28f},
-    {"spine_02", -0.33f,  0.00f,  0.28f},
-    {"spine_03", -0.33f,  0.25f,  0.24f},
-    {"neck_01",   0.00f,  0.40f,  0.12f},
-    {"Head",      0.00f,  0.35f,  0.08f},
+    {"pelvis",    1.00f,  0.00f,  0.00f,  0.000f,  0.000f},
+    {"spine_01", -0.34f,  0.00f,  0.28f,  0.209f,  0.000f},
+    {"spine_02", -0.33f,  0.00f,  0.28f,  0.192f,  0.103f},
+    {"spine_03", -0.33f,  0.25f,  0.24f,  0.193f,  0.103f},
+    {"neck_01",   0.00f,  0.40f,  0.12f,  0.134f,  0.227f},
+    {"Head",      0.00f,  0.35f,  0.08f,  0.272f,  0.566f},
 };
+
+/* How far the whole chain bends at a flinch of one, in degrees - the measured
+   peaks above. The producer's own figure never reaches one (see
+   COMBAT_FLINCH_AMOUNT), so what lands on screen is a fraction of these. */
+#define HIT_BODY_DEGREES 49.6f
+#define HIT_HEAD_DEGREES 38.5f
 
 /* How far round from the chest the legs are allowed to sit. A pure sideways
    strafe wants ninety, and this is deliberately a little short of it: the last
@@ -288,7 +370,7 @@ static void quat_fraction(const float q[4], float amount, float out[4]) {
 }
 
 /* A bone's own direction: where its first child sits, in the bone's own
-   rotated frame. That is what a HANG_POSE direction is measured against, so a
+   rotated frame. That is what an authored direction is measured against, so a
    bone with no child - the head, the finger tips - cannot be pointed and is
    dropped rather than being pointed along a guess. */
 static int rest_axis(const Skeleton* skeleton, int node, float out[3]) {
@@ -303,7 +385,7 @@ static int rest_axis(const Skeleton* skeleton, int node, float out[3]) {
     return 0;
 }
 
-/* Entries stay aligned with HANG_POSE - an unresolved bone is -1 rather than
+/* Entries stay aligned with the pose's own table - an unresolved bone is -1 rather than
    being squeezed out, so an entry's node and its direction never drift apart. */
 /* Length of the bone that ends at `child`, which is how far its own origin
    sits from its parent's. */
@@ -322,25 +404,43 @@ static short find_node(const Skeleton* skeleton, const char* name) {
     return -1;
 }
 
-static void resolve_hang_bones(CharacterAnimation* animation, const SkinnedModel* model) {
+/* Every authored pose any role names, resolved against this rig once. A bone
+   the rig has not got stays -1 and is skipped when the pose is applied, which
+   is how a pose survives a rig that is missing a finger. */
+static void resolve_authored_poses(CharacterAnimation* animation,
+                                   const SkinnedModel* model) {
     const Skeleton* skeleton = &model->skeleton;
-    animation->hang_count = 0;
-    animation->hang_upper_l = find_node(skeleton, "upperarm_l");
-    animation->hang_lower_l = find_node(skeleton, "lowerarm_l");
-    animation->hang_upper_length = bone_length(skeleton, "lowerarm_l");
-    animation->hang_lower_length = bone_length(skeleton, "hand_l");
-    for (int i = 0; i < CHARACTER_HANG_BONES; ++i) {
-        animation->hang_node[i] = -1;
-        for (int n = 0; n < skeleton->node_count; ++n) {
-            if (strcmp(skeleton->node_names[n], HANG_POSE[i].bone) != 0) continue;
-            float axis[3];
-            if (!rest_axis(skeleton, n, axis)) break;
-            animation->hang_node[i] = (short)n;
-            animation->hang_axis[i][0] = axis[0];
-            animation->hang_axis[i][1] = axis[1];
-            animation->hang_axis[i][2] = axis[2];
-            animation->hang_count++;
-            break;
+    for (int i = 0; i < CHARACTER_AUTHORED_POSES; ++i)
+        animation->authored[i].count = 0;
+    animation->reach_upper = -1;
+    animation->reach_lower = -1;
+    animation->reach_upper_length = 0.0f;
+    animation->reach_lower_length = 0.0f;
+
+    for (int r = 0; r < CHARACTER_CLIP_COUNT; ++r) {
+        const AuthoredPose* pose = ROLES[r].pose;
+        if (!pose || pose->slot < 0 || pose->slot >= CHARACTER_AUTHORED_POSES)
+            continue;
+        for (int i = 0; i < pose->count && i < CHARACTER_AUTHORED_BONES; ++i) {
+            animation->authored[pose->slot].node[i] = -1;
+            for (int n = 0; n < skeleton->node_count; ++n) {
+                if (strcmp(skeleton->node_names[n], pose->bones[i].bone) != 0)
+                    continue;
+                float axis[3];
+                if (!rest_axis(skeleton, n, axis)) break;
+                animation->authored[pose->slot].node[i] = (short)n;
+                animation->authored[pose->slot].axis[i][0] = axis[0];
+                animation->authored[pose->slot].axis[i][1] = axis[1];
+                animation->authored[pose->slot].axis[i][2] = axis[2];
+                animation->authored[pose->slot].count++;
+                break;
+            }
+        }
+        if (pose->reaches) {
+            animation->reach_upper = find_node(skeleton, pose->reach_upper);
+            animation->reach_lower = find_node(skeleton, pose->reach_lower);
+            animation->reach_upper_length = bone_length(skeleton, pose->reach_lower);
+            animation->reach_lower_length = bone_length(skeleton, pose->reach_hand);
         }
     }
 }
@@ -395,7 +495,7 @@ void character_animation_init(CharacterAnimation* animation,
     if (skinned_model_mask_subtree(model, AIM_ARM_ROOT_R, &right))
         for (int i = 0; i < SKIN_MAX_NODES; ++i)
             animation->arms.node[i] |= right.node[i];
-    resolve_hang_bones(animation, model);
+    resolve_authored_poses(animation, model);
     resolve_twist_bones(animation, model);
     animation->role = CHARACTER_CLIP_IDLE;
     animation->leg_rate = 1.0f;
@@ -455,7 +555,11 @@ static void update_facing(CharacterAnimation* animation,
        tilt this transform carries for a wall is measured against the heading it
        would have turned away from. */
     int clip_owns_heading = state->wall_running || state->wall_climbing ||
-                            state->mantling || state->ledge_hanging;
+                            state->mantling || state->ledge_hanging ||
+                            /* A body falls the way it was facing when it was
+                               shot. Turning a corpse to a look direction would
+                               swivel it on the floor. */
+                            state->dead;
     float handover = animation->twist_legs && !clip_owns_heading
         ? animation->aim_weight : 0.0f;
     if (delta_time > 0.0f)
@@ -542,6 +646,11 @@ static float horizontal_speed(const CharacterVisualState* state) {
    body is also crouching and moving, which it is. */
 static int state_role(const CharacterAnimation* animation,
                       const CharacterVisualState* state) {
+    /* Before everything. A body that is down is not doing any of the rest of
+       this, and the flags underneath it are simply whatever it was killed on -
+       the controller stops being stepped, so a player shot mid-slide keeps
+       `sliding` set for as long as they lie there. */
+    if (state->dead) return CHARACTER_CLIP_DEATH;
     /* Before the climb, because a hang is the pose you hold instead of
        climbing: the two share a ledge but never run at once. */
     if (state->ledge_hanging) return CHARACTER_CLIP_HANG;
@@ -685,7 +794,11 @@ void character_animation_update(CharacterAnimation* animation, const SkinnedMode
        snapshot is what put the twist into the body twice. With the fade
        carrying clip against clip, this is the thing that has to be continuous,
        and now it is. */
-    int hands_full = state->ledge_hanging;
+    /* A corpse aims at nothing. Unlike the three below it this is not
+       negotiable by raising a sight, for the same reason a hang is not: the
+       clip is authored down to the fingers and there is nobody left to hold a
+       rifle up. */
+    int hands_full = state->ledge_hanging || state->dead;
     int clip_owns_upper = state->sliding || state->mantling || state->wall_climbing;
     float aim_target = hands_full ||
                        (clip_owns_upper && animation->aim_ads <= 0.0f) ? 0.0f : 1.0f;
@@ -704,6 +817,28 @@ void character_animation_update(CharacterAnimation* animation, const SkinnedMode
        the two a frame out of step through every handover. */
     update_facing(animation, state, delta_time);
 
+    /* The reaction, resolved against where the body is actually DRAWN. The
+       payload carries the round's travel in world space on purpose - the
+       producer knows which way the bullet went and has no business deciding
+       which of the body's shoulders that lands on, because the body's heading
+       is this file's answer and not gameplay's. `body_yaw` is that answer and
+       update_facing has just written it.
+
+       Heading zero faces +Z, so forward is (sin, 0, cos) and the body's own
+       left is up cross forward, (cos, 0, -sin) - the same pair the flinch used
+       to be flattened onto before it carried a direction at all. */
+    animation->flinch = clampf(state->flinch, 0.0f, 1.0f);
+    animation->flinch_region = state->flinch_region;
+    if (animation->flinch > 0.0f) {
+        float yaw = animation->body_yaw * (float)MATH_DEG_TO_RAD;
+        float s_yaw = sinf(yaw), c_yaw = cosf(yaw);
+        animation->flinch_forward = state->flinch_x * s_yaw + state->flinch_z * c_yaw;
+        animation->flinch_left = state->flinch_x * c_yaw - state->flinch_z * s_yaw;
+    } else {
+        animation->flinch_forward = 0.0f;
+        animation->flinch_left = 0.0f;
+    }
+
     /* Events first: these are the moments a one-shot exists to cover, and they
        outrank a one-shot already running. Landing out of a jump has to be able
        to interrupt the jump.
@@ -715,7 +850,20 @@ void character_animation_update(CharacterAnimation* animation, const SkinnedMode
        state agrees it is worth playing, is still decided here - the producer
        reports transitions, this reads them as animation. */
     unsigned events = state->events;
-    if (events & CHARACTER_EVENT_MANTLE_BEGAN)
+    /* Dying outranks every other edge and any one-shot in flight. A player
+       killed halfway through a swing is dead now, not when the swing's hold
+       runs out. */
+    if (events & CHARACTER_EVENT_DIED)
+        switch_role(animation, model, CHARACTER_CLIP_DEATH, 0.0f);
+    /* And coming back outranks the ground edges, which is not a nicety:
+       player_controller_place is init-then-pose, so it hands back an ungrounded
+       controller and the step after it finds support and reports a LANDED. Left
+       in the chain below, that landing would fire over the top of the get-up
+       every single respawn. */
+    else if (events & CHARACTER_EVENT_RESPAWNED)
+        switch_role(animation, model, CHARACTER_CLIP_GET_UP,
+                    ROLES[CHARACTER_CLIP_GET_UP].hold);
+    else if (events & CHARACTER_EVENT_MANTLE_BEGAN)
         switch_role(animation, model, CHARACTER_CLIP_CLIMB, 0.0f);
     else if (events & CHARACTER_EVENT_SLIDE_BEGAN)
         switch_role(animation, model, CHARACTER_CLIP_SLIDE_START,
@@ -734,8 +882,14 @@ void character_animation_update(CharacterAnimation* animation, const SkinnedMode
 
     /* A landing the body has already run out of is over, whatever its hold
        says. Standing up from it while sprinting is the pose that looks broken,
-       not the missing quarter second of settling. */
-    if (animation->role == CHARACTER_CLIP_JUMP_LAND && state->has_movement_input)
+       not the missing quarter second of settling.
+
+       A get-up is the same rule and the same reason: a player who has just come
+       back and is already asking to move gets up now. Watching a second and a
+       half of animation about having respawned is exactly the kind of thing
+       this game does not do to a player who is moving. */
+    if ((animation->role == CHARACTER_CLIP_JUMP_LAND ||
+         animation->role == CHARACTER_CLIP_GET_UP) && state->has_movement_input)
         animation->hold = 0.0f;
 
     if (delta_time <= 0.0f) return;
@@ -844,13 +998,13 @@ static void apply_aim_layer(const CharacterAnimation* animation,
     stabilise_chest(animation, model, &layer, out);
 }
 
-void character_animation_set_grip(CharacterAnimation* animation,
-                                  float x, float y, float z, int valid) {
+void character_animation_set_reach(CharacterAnimation* animation,
+                                   float x, float y, float z, int valid) {
     if (!animation) return;
-    animation->hang_grip[0] = x;
-    animation->hang_grip[1] = y;
-    animation->hang_grip[2] = z;
-    animation->hang_grip_valid = valid;
+    animation->reach_target[0] = x;
+    animation->reach_target[1] = y;
+    animation->reach_target[2] = z;
+    animation->reach_valid = valid;
 }
 
 /* Two bones reaching a point: the law of cosines gives the angle the upper arm
@@ -917,40 +1071,44 @@ static void reach_two_bone(const float shoulder[3], const float target[3],
    model's space, and what a bone stores is relative to its parent. So each
    bone is pointed, and then its own global is computed for whichever of its
    children the table also poses. */
-static void apply_hang_pose(const CharacterAnimation* animation,
-                            const SkinnedModel* model, Pose* out) {
+static void apply_authored_pose(const CharacterAnimation* animation,
+                                const SkinnedModel* model,
+                                const AuthoredPose* pose, Pose* out) {
     const Skeleton* skeleton = &model->skeleton;
-    if (animation->hang_count <= 0) return;
+    if (!pose || pose->slot < 0 || pose->slot >= CHARACTER_AUTHORED_POSES) return;
+    if (animation->authored[pose->slot].count <= 0) return;
 
-    int reaching = animation->hang_grip_valid && animation->hang_upper_l >= 0 &&
-                   animation->hang_lower_l >= 0 && animation->hang_upper_length > 1e-5f &&
-                   animation->hang_lower_length > 1e-5f;
+    int reaching = pose->reaches && animation->reach_valid &&
+                   animation->reach_upper >= 0 && animation->reach_lower >= 0 &&
+                   animation->reach_upper_length > 1e-5f &&
+                   animation->reach_lower_length > 1e-5f;
     float upper_dir[3] = {0, 1, 0}, lower_dir[3] = {0, 1, 0};
 
     Mat4 global[SKIN_MAX_NODES];
     for (int i = 0; i < skeleton->node_count; ++i) {
         int node = skeleton->order[i];
 
-        for (int e = 0; e < CHARACTER_HANG_BONES; ++e) {
-            if (animation->hang_node[e] != node) continue;
+        for (int e = 0; e < pose->count && e < CHARACTER_AUTHORED_BONES; ++e) {
+            if (animation->authored[pose->slot].node[e] != node) continue;
             int parent = skeleton->parent[node];
-            float target[3] = {HANG_POSE[e].x, HANG_POSE[e].y, HANG_POSE[e].z};
+            float target[3] = {pose->bones[e].x, pose->bones[e].y,
+                               pose->bones[e].z};
             /* The reaching arm overrides its authored direction. Solved once,
                when the upper arm comes round, because the forearm's answer
                depends on where the elbow landed. */
-            if (reaching && node == animation->hang_upper_l) {
+            if (reaching && node == animation->reach_upper) {
                 float shoulder[3] = {global[parent].m[12], global[parent].m[13],
                                      global[parent].m[14]};
                 const float* t = out->local[node].translation;
                 float offset[3];
                 mat4_transform_direction(&global[parent], t, offset);
                 for (int c = 0; c < 3; ++c) shoulder[c] += offset[c];
-                reach_two_bone(shoulder, animation->hang_grip,
-                               animation->hang_upper_length,
-                               animation->hang_lower_length, HANG_ELBOW_POLE,
+                reach_two_bone(shoulder, animation->reach_target,
+                               animation->reach_upper_length,
+                               animation->reach_lower_length, pose->elbow_pole,
                                upper_dir, lower_dir);
                 for (int c = 0; c < 3; ++c) target[c] = upper_dir[c];
-            } else if (reaching && node == animation->hang_lower_l) {
+            } else if (reaching && node == animation->reach_lower) {
                 for (int c = 0; c < 3; ++c) target[c] = lower_dir[c];
             }
             float length = sqrtf(target[0]*target[0] + target[1]*target[1] +
@@ -976,7 +1134,8 @@ static void apply_hang_pose(const CharacterAnimation* animation,
                     local_target[c] = basis[c*3+0]*target[0] + basis[c*3+1]*target[1] +
                                       basis[c*3+2]*target[2];
             }
-            quat_between(animation->hang_axis[e], local_target, out->local[node].rotation);
+            quat_between(animation->authored[pose->slot].axis[e], local_target,
+                         out->local[node].rotation);
             break;
         }
 
@@ -1099,6 +1258,60 @@ static void apply_body_twist(const CharacterAnimation* animation,
     if (leaning) apply_axis_channel(animation, model, MODEL_FORWARD, lean, out);
 }
 
+/* The rock a round put through the body, bent down the spine and left there to
+   decay on the producer's clock.
+
+   ADDITIVE, and applied after everything else, which is the whole design. The
+   aim layer is a mask rooted at spine_02 that REPLACES the chest, the arms and
+   the head; a reaction that shared that mask would be arguing with it, and the
+   rifle would come off the crosshair every time a round landed. Composed on top
+   instead, every local rotation the aim layer wrote survives exactly as it put
+   it, and the hierarchy carries the chest, both arms, the head and the gun
+   along with the bend - which is not a compromise, it is the point. Being shot
+   should move a player's aim.
+
+   The pelvis is excluded by its share being zero in both columns, and that is
+   load-bearing rather than incidental: the legs hang off the pelvis, so leaving
+   it alone is exactly what lets a sprinting player keep sprinting through a
+   hit. Nothing here can interrupt a player who is moving well.
+
+   Two passes about two axes, for the reason apply_body_twist is also two: a
+   rotation about the model's own right and one about its forward do not
+   commute, and interleaved bone by bone the chain telescopes to neither sum. */
+static void apply_hit_reaction(const CharacterAnimation* animation,
+                               const SkinnedModel* model, Pose* out) {
+    if (animation->twist_count <= 0 || animation->flinch <= 0.001f) return;
+
+    /* Between the two measured columns by where the round landed. A leg hit
+       reads as a body hit: there is no leg column, and a rig whose legs are
+       carrying a stride has nothing to spare for one. */
+    float head = animation->flinch_region == CHARACTER_HIT_HEAD ? 1.0f : 0.0f;
+    float total = lerpf(HIT_BODY_DEGREES, HIT_HEAD_DEGREES, head) *
+                  animation->flinch;
+
+    float pitch[CHARACTER_TWIST_BONES], roll[CHARACTER_TWIST_BONES];
+    int pitching = 0, rolling = 0;
+    for (int e = 0; e < CHARACTER_TWIST_BONES; ++e) {
+        float share = lerpf(TWIST_BONES[e].hit_body, TWIST_BONES[e].hit_head, head);
+        /* The body goes the way the round pushes it. A positive rotation about
+           the model's own right (+x, which is its LEFT side - see the lean)
+           takes +y toward +z, which is a bend forward, and forward is where a
+           round travelling along the body's facing is driving it. */
+        pitch[e] = total * share * animation->flinch_forward;
+        /* And sideways, on the axis the lean already rolls about. A positive
+           roll about +z takes the head toward -x, and +x is the body's own
+           left, so a round arriving on the left needs the negative. */
+        roll[e] = -total * share * animation->flinch_left;
+        if (fabsf(pitch[e]) >= 0.02f) pitching = 1;
+        if (fabsf(roll[e]) >= 0.02f) rolling = 1;
+    }
+
+    static const float MODEL_RIGHT[3] = {1.0f, 0.0f, 0.0f};
+    static const float MODEL_FORWARD_HIT[3] = {0.0f, 0.0f, 1.0f};
+    if (pitching) apply_axis_channel(animation, model, MODEL_RIGHT, pitch, out);
+    if (rolling) apply_axis_channel(animation, model, MODEL_FORWARD_HIT, roll, out);
+}
+
 /* The clip and the cross-fade out of the last one, and nothing else. This is
    what the aim layer and the facing twist are then applied to, and it is what a
    role switch snapshots - so a fade only ever carries clip against clip. */
@@ -1110,10 +1323,14 @@ static void compose_base(const CharacterAnimation* animation,
     /* Looping is the sampler's caller's job, which is here: a clip that runs
        out holds its last frame, and a role that loops wraps its time instead.
        A one-shot never loops - it holds its last frame and then expires, which
-       is the whole difference between a swing and a walk cycle. */
+       is the whole difference between a swing and a walk cycle. A clamped role
+       is the third case: it neither wraps nor expires, so what is left on
+       screen when the clip runs out is its final pose, held for as long as the
+       state that asked for it lasts. That is a corpse. */
     float time = animation->time;
     if (clip >= 0 && animation->oneshot_clip < 0 &&
-        ROLES[animation->role].hold == 0.0f) {
+        ROLES[animation->role].hold == 0.0f &&
+        !ROLES[animation->role].clamp) {
         float duration = model->clips[clip].duration;
         /* Reversed playback walks the clock backwards, and fmodf keeps the
            sign of its left operand, so a negative time has to be brought back
@@ -1127,7 +1344,8 @@ static void compose_base(const CharacterAnimation* animation,
     skinned_model_sample(model, clip, time, out);
     /* Before the cross-fade, so entering and leaving a hang eases the way
        every other clip change does. */
-    if (animation->role == CHARACTER_CLIP_HANG) apply_hang_pose(animation, model, out);
+    if (ROLES[animation->role].pose)
+        apply_authored_pose(animation, model, ROLES[animation->role].pose, out);
 
     if (animation->fading && FADE_SECONDS > 0.0f) {
         float t = 1.0f - animation->fade / FADE_SECONDS;
@@ -1185,7 +1403,7 @@ static int reach_arm(const Skeleton* skeleton, const Mat4 global[], Pose* pose,
 }
 
 /* Points one bone along a model-space direction, leaving its roll wherever the
-   minimal rotation puts it. The same three steps apply_hang_pose takes, and
+   minimal rotation puts it. The same three steps apply_authored_pose takes, and
    split out here because two arms want them four times. */
 static void point_along(const Skeleton* skeleton, const Mat4 global[],
                         int node, const float dir[3], Pose* pose) {
@@ -1213,7 +1431,7 @@ void character_animation_reach_hands(const SkinnedModel* model,
     float ru[3], rl[3], lu[3], ll[3];
     int did_r = 0, did_l = 0;
 
-    /* One ordered pass, parents before children, for the reason apply_hang_pose
+    /* One ordered pass, parents before children, for the reason apply_authored_pose
        makes it: pointing a bone needs its parent's global, and rewriting a
        shoulder's child changes nothing above it. */
     Mat4 global[SKIN_MAX_NODES];
@@ -1256,7 +1474,10 @@ void character_animation_pose(const CharacterAnimation* animation,
        neither of those changes because a clip did. */
     compose_base(animation, model, out);
     apply_aim_layer(animation, model, out);
-    /* Last, and after the aim layer on purpose: the layer overwrites the spine
-       outright, so a twist applied before it would be thrown away. */
+    /* After the aim layer on purpose: the layer overwrites the spine outright,
+       so a twist applied before it would be thrown away. */
     apply_body_twist(animation, model, out);
+    /* And the reaction last of all, on top of a finished body. It is the only
+       layer here that is meant to disturb what the ones below it decided. */
+    apply_hit_reaction(animation, model, out);
 }

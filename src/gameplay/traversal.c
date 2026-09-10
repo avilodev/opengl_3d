@@ -89,7 +89,7 @@ int traversal_raycast_walls(float ox, float oy, float oz,
         SlabState state = {0.0f, closest, -1, 0.0f};
         if (!ray_slab(&state, 0, ox, dx, wall->x - wall->width * .5f,
                       wall->x + wall->width * .5f) ||
-            !ray_slab(&state, 1, oy, dy, 0.0f, wall->height) ||
+            !ray_slab(&state, 1, oy, dy, wall->base, wall->top) ||
             !ray_slab(&state, 2, oz, dz, wall->z - wall->depth * .5f,
                       wall->z + wall->depth * .5f)) continue;
         /* entry_axis stays -1 only when the origin is already inside the box,

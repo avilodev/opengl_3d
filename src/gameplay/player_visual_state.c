@@ -7,6 +7,7 @@
 void player_visual_state_fill(CharacterVisualState* out,
                               const CharacterVisualState* previous,
                               const PlayerController* player,
+                              const Combatant* body,
                               float look_yaw_degrees, float look_pitch_degrees,
                               float ads) {
     if (!out || !player) return;
@@ -26,15 +27,29 @@ void player_visual_state_fill(CharacterVisualState* out,
     state.ads = ads;
     state.lean = player->lean;
     state.walk_time = player->walk_time;
-    state.grip_x = player->mantle.grip_x;
-    state.grip_y = player->mantle.grip_y;
-    state.grip_z = player->mantle.grip_z;
+    state.reach_x = player->mantle.grip_x;
+    state.reach_y = player->mantle.grip_y;
+    state.reach_z = player->mantle.grip_z;
+
+    /* The pool's half of the picture. `lean` above is the peek and stays the
+       peek; the reaction has its own fields, which is what lets a player who is
+       peeking a corner and taking rounds do both at once. */
+    state.dead = (unsigned char)(body && !body->alive);
+    state.flinch = body ? body->flinch : 0.0f;
+    state.flinch_x = body ? body->flinch_x : 0.0f;
+    state.flinch_z = body ? body->flinch_z : 0.0f;
+    state.flinch_region = (unsigned char)(body ? body->flinch_region
+                                               : COMBATANT_REGION_CHEST);
 
     /* A mantle is a climb, and a climb is not standing on anything - the
        collision capsule is still resting on whatever it left, so the raw flag
        says grounded through the whole of it. Folded in here rather than left to
        the rig, so the wire carries the answer and not the two halves of it. */
-    state.grounded = (unsigned char)(player->ground.is_grounded &&
+    /* A corpse is not standing on anything: the death clip is authored falling
+       to the floor, and the controller is not stepped while the body is down so
+       its own flag is simply whatever it was killed on. */
+    state.grounded = (unsigned char)(!state.dead &&
+                                     player->ground.is_grounded &&
                                      !player->mantle.active);
     state.moving = (unsigned char)(player->is_moving != 0);
     state.has_movement_input = (unsigned char)(player->has_movement_input != 0);
@@ -65,6 +80,10 @@ void player_visual_state_fill(CharacterVisualState* out,
             state.events |= CHARACTER_EVENT_SLIDE_ENDED;
         if (state.mantling && !previous->mantling)
             state.events |= CHARACTER_EVENT_MANTLE_BEGAN;
+        if (state.dead && !previous->dead)
+            state.events |= CHARACTER_EVENT_DIED;
+        if (!state.dead && previous->dead)
+            state.events |= CHARACTER_EVENT_RESPAWNED;
     }
 
     *out = state;

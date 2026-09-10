@@ -27,15 +27,14 @@ void renderer3d_resize(int width, int height);
    is doing with the shared rig. Both may be NULL, which is a world with nobody
    else in it.
 
-   `player_body` is what has happened to the PLAYER, and it is here for exactly
-   one reason: a body that is down is not drawn, and the player's body is a body.
-   Everything else about it - where it is, which way it faces - reaches the rig
-   through `body_state` the way it always has. It may be NULL, which is a mode
-   with no health in it, and then the body is always drawn. */
+   The player's own pool used to be passed in beside these, for exactly one
+   reason: a body that was down was not drawn. It is drawn now - it falls and
+   lies where it was shot - and whether it is down reaches the rig through
+   `body_state.dead` the way everything else about it always has, so the
+   parameter went with the rule that needed it. */
 void renderer3d_draw(const ThirdPersonCamera* camera, const PlayerController* player,
                      const Weapon* weapon, CharacterLibrary* characters,
                      CharacterInstance* body, const CharacterVisualState* body_state,
-                     const Combatant* player_body,
                      const CombatantSet* combatants,
                      CombatantBodies* combatant_bodies,
                      float delta_time);

@@ -17,8 +17,16 @@
    facing and the twist comes out at zero by construction.
 
    A combatant arriving over a wire would skip this file entirely - it would
-   already have the payload - which is the whole point of the payload. */
+   already have the payload - which is the whole point of the payload.
+
+   `previous` is this same body's payload last frame, or NULL on its first, and
+   is what the death and respawn edges are the difference against - exactly as
+   in player_visual_state.h, and for the same reason: nothing on a Combatant
+   publishes an edge, so someone with both frames in hand has to notice. It may
+   alias `out`, and the ordinary call passes the persistent per-body state as
+   both. */
 void combatant_visual_state_fill(CharacterVisualState* out,
+                                 const CharacterVisualState* previous,
                                  const Combatant* combatant);
 
 #endif

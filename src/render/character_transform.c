@@ -97,7 +97,7 @@ float character_hang_drop(const SkinnedModel* model,
                           const CharacterVisualState* state) {
     if (instance->hang_blend <= 0.0f) return 0.0f;
     float reach = CHARACTER_HANG_REACH * character_rig_scale(model);
-    float lip_above_feet = state->grip_y - state->y;
+    float lip_above_feet = state->reach_y - state->y;
     float drop = lip_above_feet - reach;
     if (drop > 0.0f) drop = 0.0f;
     if (drop < -CHARACTER_HANG_MAX_DROP) drop = -CHARACTER_HANG_MAX_DROP;

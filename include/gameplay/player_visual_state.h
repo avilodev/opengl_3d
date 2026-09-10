@@ -1,6 +1,7 @@
 #ifndef PLAYER_VISUAL_STATE_H
 #define PLAYER_VISUAL_STATE_H
 
+#include "gameplay/combatant.h"
 #include "gameplay/player_controller.h"
 #include "render/character_state.h"
 
@@ -21,10 +22,18 @@
 
    `look_yaw_degrees` and `look_pitch_degrees` are where this player is looking.
    For the local player that is their camera; the camera is not otherwise this
-   function's business. `ads` is how far their sight is up. */
+   function's business. `ads` is how far their sight is up.
+
+   `body` is the player's own Combatant, and it is here because being alive and
+   being hit are the two things about a player that the CONTROLLER deliberately
+   does not know. Health stays off the controller - it is a function of state,
+   input and time and has never heard of damage - so the one place that already
+   knows both halves is the one place that can put them on the wire. NULL is a
+   body with no pool at all, which reads as alive and unhit. */
 void player_visual_state_fill(CharacterVisualState* out,
                               const CharacterVisualState* previous,
                               const PlayerController* player,
+                              const Combatant* body,
                               float look_yaw_degrees, float look_pitch_degrees,
                               float ads);
 

@@ -21,7 +21,7 @@ static int find_mantle_ledge(const PlayerController* player,
 
     for (int i = 0; i < ARENA_WALL_COUNT; ++i) {
         const ArenaWall* wall = &g_arena_walls[i];
-        float rise = wall->height - player->y;
+        float rise = wall->top - player->y;
         if (rise < MOVE_MANTLE_MIN_RISE || rise > MOVE_MANTLE_MAX_RISE) continue;
 
         float half_width = wall->width * 0.5f;
@@ -49,10 +49,10 @@ static int find_mantle_ledge(const PlayerController* player,
         /* Reject a landing spot that a taller box already occupies. */
         float occupied = arena_support_height(landing_x, landing_z,
                                               PLAYER_RADIUS, 1.0e9f);
-        if (occupied > wall->height + 0.05f) continue;
+        if (occupied > wall->top + 0.05f) continue;
 
         *target_x = landing_x;
-        *target_y = wall->height;
+        *target_y = wall->top;
         *target_z = landing_z;
         /* The lip itself, as opposed to where a mantle would put the player
            down: the nearest point on the ledge's top edge, which is what a

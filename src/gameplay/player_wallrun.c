@@ -19,8 +19,10 @@ static int find_wall_contact(const PlayerController* player,
 
     for (int i = 0; i < ARENA_WALL_COUNT; ++i) {
         const ArenaWall* wall = &g_arena_walls[i];
-        if (player->y < MOVE_WALL_MIN_HEIGHT || player->y >= wall->height - 0.2f)
+        if (player->y < MOVE_WALL_MIN_HEIGHT || player->y >= wall->top - 0.2f)
             continue;
+        /* A raised box has no face down here to run along. */
+        if (player->y < wall->base) continue;
 
         float half_width = wall->width * 0.5f;
         float half_depth = wall->depth * 0.5f;

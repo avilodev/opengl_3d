@@ -401,6 +401,12 @@
 #define MOVE_GRAPPLE_MAX_CORRECTION 1.0f
 
 /* --- vertical traversal --- */
+/* How much headroom the player occupies, for the one question that needs it:
+   whether a box overhead is something they walk under or something they hit.
+   It matches CHARACTER_RIG_HEIGHT because the body a bullet can hit and the
+   body a ceiling can stop have no business disagreeing. */
+#define MOVE_PLAYER_HEIGHT 2.53f
+
 #define MOVE_STEP_UP_HEIGHT 0.45f
 #define MOVE_STEP_DOWN_HEIGHT 0.5f
 #define MOVE_MANTLE_MIN_RISE 0.35f

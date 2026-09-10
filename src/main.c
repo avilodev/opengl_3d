@@ -476,6 +476,11 @@ int main(void) {
                    having hung rather than as the player having died - and it
                    is what lets them watch the room they lost. */
                 int player_alive = player_body.alive;
+                /* Out of their own head while they are down, and back to
+                   whatever they were using when they come up. Called every step
+                   with the flag rather than on an edge somebody has to spot -
+                   the call is idempotent for exactly that reason. */
+                third_person_camera_set_downed(&camera, !player_alive);
                 if (player_alive) {
                     player_controller_update_lean(&player, &step_player,
                                                   SIMULATION_STEP);
@@ -619,6 +624,7 @@ int main(void) {
            packet instead, and the rig cannot tell the two apart. */
         player_visual_state_fill(&body_state,
                                  body_state_valid ? &body_state : NULL, &player,
+                                 &player_body,
                                  camera.yaw_degrees, camera.pitch_degrees,
                                  weapon.ads);
         body_state_valid = 1;
@@ -656,7 +662,7 @@ int main(void) {
         /* A paused game keeps its pose: the body is not simulated while the
            menu is up, so animating it would have it walking on the spot. */
         renderer3d_draw(&camera, &player, &weapon, &characters, &body, &body_state,
-                        &player_body, &combatants, &combatant_bodies,
+                        &combatants, &combatant_bodies,
                         pause_menu.active ? 0.0f : delta_time);
         if (pause_menu.active)
             pause_menu_render(&pause_menu, framebuffer_width, framebuffer_height);

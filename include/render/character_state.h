@@ -33,7 +33,26 @@ enum {
     CHARACTER_EVENT_LANDED       = 1 << 1,
     CHARACTER_EVENT_SLIDE_BEGAN  = 1 << 2,
     CHARACTER_EVENT_SLIDE_ENDED  = 1 << 3,
-    CHARACTER_EVENT_MANTLE_BEGAN = 1 << 4
+    CHARACTER_EVENT_MANTLE_BEGAN = 1 << 4,
+    /* The pool emptied. A state as well as an edge - see `dead` - because a
+       body that arrives mid-fall from a packet has to know it is down, and
+       because the corpse outlasts the frame the bit was set on. */
+    CHARACTER_EVENT_DIED         = 1 << 5,
+    /* Stood back up, somewhere else. Outranks the ground edges on any frame
+       carrying it: player_controller_place is init-then-pose, so it leaves the
+       controller ungrounded and the step that follows finds support and emits
+       a LANDED that would otherwise fire a landing over the top of the
+       get-up. */
+    CHARACTER_EVENT_RESPAWNED    = 1 << 6
+};
+
+/* Which band of the hitbox a round landed in, for the reaction layer. Kept
+   numerically identical to CombatantRegion; declared again rather than
+   included, because the rig has no business knowing what a Combatant is. */
+enum {
+    CHARACTER_HIT_LEGS,
+    CHARACTER_HIT_CHEST,
+    CHARACTER_HIT_HEAD
 };
 
 typedef struct {
@@ -64,16 +83,50 @@ typedef struct {
     float ads;
 
     /* Authored lean in [-1, 1], positive to the body's own left - the side its
-       left arm is on, which for a rig facing its own +z with +y up is +x. */
+       left arm is on, which for a rig facing its own +z with +y up is +x.
+
+       This is PEEK and nothing else. It used to carry the flinch as well,
+       because a rig with no hit clip had no other channel to bend a spine on,
+       which meant the two overwrote each other on any body that could do both -
+       and the player, who is the only body that peeks, therefore never showed a
+       flinch at all. The reaction has its own three fields below now. */
     float lean;
+
+    /* ---- the hit reaction ----
+       How hard the body is rocked, 0 to 1, decaying on the producer's side
+       rather than the rig's, and the unit horizontal direction the round was
+       travelling in world space.
+
+       Continuous rather than an event bit on purpose. The events above exist
+       because a transition that falls between two packets is a transition the
+       rig never sees; a decaying scalar has no such problem, because a packet
+       that goes missing means it is sampled late rather than lost. Carrying a
+       direction rather than a signed magnitude is what lets the reaction bend
+       away from the actual round instead of only sideways. */
+    float flinch;
+    float flinch_x, flinch_z;
 
     /* The stride clock, for the box fallback body's one animation. The
        mannequin has its own playhead and ignores this. */
     float walk_time;
 
-    /* The point on the ledge's top edge a hanging body is holding, in world
-       units. Meaningless unless `ledge_hanging`. */
-    float grip_x, grip_y, grip_z;
+    /* A point in the world one hand is reaching for. The ledge a hanging body
+       is holding today; the anchor a grapple is hauling on when that pose is
+       authored, which wants exactly the same field and exactly the same solve.
+       Meaningless unless something that reaches is running. */
+    float reach_x, reach_y, reach_z;
+
+    /* Down, and not to be drawn standing. Named for the state it is rather than
+       for its opposite, which is not a style choice: combatant_visual_state_fill
+       clears this whole struct to zero and then writes only what a standing body
+       is doing, relying on zero being the sane default for anything added later.
+       An `alive` field would make every body in the world a corpse the moment it
+       was added and say nothing at the call site. */
+    unsigned char dead;
+
+    /* Which band the round that set `flinch` landed in - CHARACTER_HIT_*. Picks
+       the head snap apart from the body rock. */
+    unsigned char flinch_region;
 
     /* On a supporting surface. Not the controller's raw flag: a body partway
        through a mantle is off the ground as far as the rig is concerned,
@@ -92,8 +145,13 @@ typedef struct {
     /* Which side the wall is on during a wall run: -1, 0 or +1. */
     signed char wall_run_side;
 
-    /* CHARACTER_EVENT_* bits for this frame. */
-    unsigned char events;
+    /* CHARACTER_EVENT_* bits for this frame.
+
+       A short rather than a byte. Seven bits are spoken for and the eighth
+       would be the last one free, which puts the next movement verb that wants
+       an edge in the position of paying for a change to the wire format to get
+       it. Widening now costs a byte on a struct nothing serialises yet. */
+    unsigned short events;
 } CharacterVisualState;
 
 #endif

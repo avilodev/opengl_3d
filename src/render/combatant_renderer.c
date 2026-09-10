@@ -2,6 +2,7 @@
 #include "gameplay/combatant_visual_state.h"
 
 #include <math.h>
+#include <stddef.h>
 
 /* Past this a body is not skinned. The arena's diagonal is a little over two
    hundred metres and every rig is eight thousand vertices, so a set of bodies
@@ -23,7 +24,7 @@ void combatant_bodies_init(CombatantBodies* bodies, const CombatantSet* set,
     for (int i = 0; i < bodies->count; ++i) {
         character_instance_init(&bodies->instances[i], rig);
         bodies->instances[i].weapon = weapon;
-        combatant_visual_state_fill(&bodies->states[i], &set->items[i]);
+        combatant_visual_state_fill(&bodies->states[i], NULL, &set->items[i]);
         bodies->drawable[i] = 0;
     }
 }
@@ -59,16 +60,23 @@ void combatant_bodies_update(CombatantBodies* bodies, CharacterLibrary* library,
     int count = bodies->count < set->count ? bodies->count : set->count;
     for (int i = 0; i < count; ++i) {
         const Combatant* combatant = &set->items[i];
-        /* A body that is down is not drawn at all. The rig has no death clip
-           and nothing to fall with, so the honest choice between a corpse
-           standing at attention and no corpse is no corpse - and the raycast
-           has already stopped resolving against it, so what is drawn and what
-           is solid still agree. */
-        if (!combatant->active || !combatant->alive) {
+        /* A body that is down IS drawn now, falling and then lying where it
+           was shot: the rig has a death clip and the payload carries `dead`, so
+           the honest picture is a corpse rather than a body that blinks out.
+           What has not changed is the trace, which still refuses a dead body -
+           rounds pass through the dead, and a corpse is scenery rather than
+           cover. So what is drawn and what is solid deliberately disagree here,
+           and this comment is where that is said out loud.
+
+           An inactive slot is still nothing at all: it holds no body to draw. */
+        if (!combatant->active) {
             bodies->drawable[i] = 0;
             continue;
         }
-        combatant_visual_state_fill(&bodies->states[i], combatant);
+        /* Its own last frame as `previous`, which is what the death and respawn
+           edges are the difference against. */
+        combatant_visual_state_fill(&bodies->states[i], &bodies->states[i],
+                                    combatant);
         int visible = worth_skinning(combatant, eye_x, eye_y, eye_z,
                                      look_x, look_y, look_z);
         character_renderer_update(library, &bodies->instances[i],

@@ -67,7 +67,7 @@ static void draw_walls(void) {
            to Bastion, clean cyan points back to Axiom, and blue/hazard surfaces
            name the spillway and gate machinery at a glance. Height still
            shades each family so mantle cover reads apart from a tall route. */
-        float tall = fminf(wall->height / 16.0f, 1.0f);
+        float tall = fminf(wall->top / 16.0f, 1.0f);
         switch (wall->material) {
         case ARENA_MATERIAL_BASTION:
             glColor3f(.52f + tall * .12f, .31f + tall * .04f,
@@ -89,8 +89,8 @@ static void draw_walls(void) {
             break;
         }
         glPushMatrix();
-        glTranslatef(wall->x, wall->height * 0.5f, wall->z);
-        primitives_draw_box(wall->width, wall->height, wall->depth);
+        glTranslatef(wall->x, (wall->base + wall->top) * 0.5f, wall->z);
+        primitives_draw_box(wall->width, wall->top - wall->base, wall->depth);
         glPopMatrix();
     }
 }
@@ -316,18 +316,20 @@ static void camera_position(const ThirdPersonCamera* camera,
 void renderer3d_draw(const ThirdPersonCamera* camera, const PlayerController* player,
                      const Weapon* weapon, CharacterLibrary* characters,
                      CharacterInstance* body, const CharacterVisualState* body_state,
-                     const Combatant* player_body,
                      const CombatantSet* combatants,
                      CombatantBodies* combatant_bodies,
                      float delta_time) {
-    /* Third person, and standing. The second half is the same rule
-       combatant_bodies_update applies to everybody else: the rig has no death
-       clip, so a body that is down is not drawn rather than drawn at attention.
+    /* Third person - and that is now the whole rule, the same one
+       combatant_bodies_update applies to everybody else. A body that is down is
+       drawn falling and then lying there: the rig has a death clip, and the
+       camera has already left the player's head for as long as they are down,
+       so the corpse this draws is the thing they are looking at. Dropping the
+       standing half of the test is what makes the death visible at all.
+
        It also decides the skinning, because a body nobody can see is a body not
        worth skinning - the playhead keeps running either way, which is what
        stops a pose from popping when the player stands back up. */
-    int draw_body = !camera->is_first_person &&
-                    (!player_body || player_body->alive);
+    int draw_body = !camera->is_first_person;
     /* Before any pass, and exactly once. draw_world can run twice, and while
        it never draws the player's body in both - a scope is first person and
        that body is third - the rule this depends on is that skinning and the

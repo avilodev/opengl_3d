@@ -92,9 +92,9 @@ static int hang_grip_pose_space(const SkinnedModel* model,
     float scale = character_rig_scale(model);
     if (scale < 1e-5f) return 0;
 
-    float vx = state->grip_x - state->x;
-    float vy = state->grip_y - (state->y + drop);
-    float vz = state->grip_z - state->z;
+    float vx = state->reach_x - state->x;
+    float vy = state->reach_y - (state->y + drop);
+    float vz = state->reach_z - state->z;
 
     float heading = character_animation_body_yaw(&instance->animation) *
                     (float)MATH_DEG_TO_RAD;
@@ -273,7 +273,7 @@ void character_renderer_update(CharacterLibrary* library, CharacterInstance* ins
     float grip[3] = {0.0f, 0.0f, 0.0f};
     int reaching = hang_grip_pose_space(model, instance, state,
                                         character_hang_drop(model, instance, state), grip);
-    character_animation_set_grip(&instance->animation, grip[0], grip[1], grip[2],
+    character_animation_set_reach(&instance->animation, grip[0], grip[1], grip[2],
                                  reaching);
 
     character_animation_update(&instance->animation, model, state, delta_time);

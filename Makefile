@@ -68,6 +68,7 @@ HEADLESS_CORE := \
     src/gameplay/action_track.c \
     src/gameplay/arena.c \
     src/gameplay/combatant.c \
+    src/gameplay/combatant_visual_state.c \
     src/gameplay/damage_number.c \
     src/gameplay/melee_swing.c \
     src/gameplay/player_combatant.c \
@@ -120,12 +121,14 @@ PROBE_CFLAGS := -Wall -Wextra -std=c11 -O1 -MMD -MP
 #   sheathprobe  where the scabbard is worn and whether the sword agrees
 #   meleeprobe   what a swing hits: once per target, only inside the window
 #   deathprobe   health, death and respawn
+#   animprobe    the death beat on the rig, and the hit reaction
 #   specprobe    every weapon says what it is, and its mesh agrees
 PROBE       := bin/viewmodel_probe
 BODY_PROBE  := bin/body_probe
 SHEATH_PROBE:= bin/sheath_probe
 MELEE_PROBE := bin/melee_probe
 DEATH_PROBE := bin/death_probe
+ANIM_PROBE  := bin/anim_probe
 SPEC_PROBE  := bin/weapon_spec_probe
 # The one probe built with the tuning overlay compiled in - see
 # tools/placement_probe.c. A check on the overlay that compiled it out would be
@@ -133,7 +136,7 @@ SPEC_PROBE  := bin/weapon_spec_probe
 TUNE_PROBE  := bin/placement_probe
 
 PROBES := $(PROBE) $(BODY_PROBE) $(SHEATH_PROBE) $(MELEE_PROBE) \
-          $(DEATH_PROBE) $(SPEC_PROBE) $(TUNE_PROBE)
+          $(DEATH_PROBE) $(ANIM_PROBE) $(SPEC_PROBE) $(TUNE_PROBE)
 
 # One recipe for all six. $* is the probe's own source stem.
 bin/%: tools/%.c $(HEADLESS_CORE)
@@ -145,6 +148,7 @@ bodyprobe:   $(BODY_PROBE);  ./$(BODY_PROBE)
 sheathprobe: $(SHEATH_PROBE);./$(SHEATH_PROBE)
 meleeprobe:  $(MELEE_PROBE); ./$(MELEE_PROBE)
 deathprobe:  $(DEATH_PROBE); ./$(DEATH_PROBE)
+animprobe:   $(ANIM_PROBE);  ./$(ANIM_PROBE)
 specprobe:   $(SPEC_PROBE);  ./$(SPEC_PROBE)
 
 # Records what the weapons currently derive to. Run it when a change to a
@@ -173,11 +177,12 @@ $(PLACEMENT_WRITE): tools/placement_write.c $(HEADLESS_CORE)
 placements: $(PLACEMENT_WRITE); ./$(PLACEMENT_WRITE)
 
 # Everything the probes check, in one word. What to run before a commit.
-probes: probe bodyprobe sheathprobe meleeprobe deathprobe specprobe \
+probes: probe bodyprobe sheathprobe meleeprobe deathprobe animprobe specprobe \
         tuneprobe
 
 .PHONY: all tune build clean run probes golden \
-        probe bodyprobe sheathprobe meleeprobe deathprobe specprobe tuneprobe \
+        probe bodyprobe sheathprobe meleeprobe deathprobe animprobe specprobe \
+        tuneprobe \
         placements
 
 all: $(TARGET)

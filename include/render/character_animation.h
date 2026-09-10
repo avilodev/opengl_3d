@@ -33,11 +33,34 @@ enum {
     CHARACTER_CLIP_SLIDE_EXIT,
     CHARACTER_CLIP_CLIMB,
     CHARACTER_CLIP_HANG,
+    /* Down. A state role rather than a one-shot - the body is dead for as long
+       as the payload says so, which outlasts the clip - and the only role that
+       clamps: it plays through once and then holds its last frame, which is
+       what a corpse is. */
+    CHARACTER_CLIP_DEATH,
+    /* Getting back up, somewhere else. A one-shot, because being alive again
+       is a state the locomotion roles already cover the moment this expires. */
+    CHARACTER_CLIP_GET_UP,
     CHARACTER_CLIP_COUNT
 };
 
-/* Bones the wall hang poses by hand. */
-#define CHARACTER_HANG_BONES 31
+/* The most bones any one authored pose points by hand, and how many such poses
+   the rig can carry at once.
+
+   An AUTHORED POSE is what a role uses when the library has no clip for what
+   the body is doing: a table of bone directions in the model's own space,
+   layered over whatever base clip comes closest. The wall hang is the first
+   one and for now the only one - of eighty-six clips exactly one puts both
+   hands above the head, and none of them is a ledge hang.
+
+   It is a table rather than a special case because it is the seam every other
+   faked state comes through. A wall run plays a forward sprint today and a
+   grapple plays a fall; both want a pose here, and both want to stop wanting
+   one the day somebody authors the clip. When that happens the role's row names
+   the new clip, its pose slot goes to -1, and the table is deleted - and
+   nothing in the state machine moves. */
+#define CHARACTER_AUTHORED_BONES 31
+#define CHARACTER_AUTHORED_POSES 4
 
 /* Bones the facing twists, in one table with three channels: the leg turn, the
    head look, and the lean. The first four are the leg chain - the pelvis, which
@@ -108,24 +131,55 @@ typedef struct {
        here, because the controller already did. */
     float lean;
 
-    /* ---- the wall hang ----
-       Resolved once, because the pose is authored rather than animated:
-       nothing in the library is a ledge hang, so it is built by pointing
-       eighteen bones along directions chosen by eye. `node` is which bone
-       each entry moves and `axis` is that bone's own rest direction - where
-       its first child sits - which is what the direction is measured against. */
-    short hang_node[CHARACTER_HANG_BONES];
-    float hang_axis[CHARACTER_HANG_BONES][3];
-    int hang_count;
+    /* ---- the authored poses ----
+       Resolved once per pose, at init. `node` is which bone each entry moves
+       and `axis` is that bone's own rest direction - where its first child sits
+       - which is what the direction is measured against. Entries stay aligned
+       with the pose's own table: an unresolved bone is -1 rather than being
+       squeezed out, so an entry's node and its direction never drift apart. */
+    struct {
+        short node[CHARACTER_AUTHORED_BONES];
+        float axis[CHARACTER_AUTHORED_BONES][3];
+        int count;
+    } authored[CHARACTER_AUTHORED_POSES];
 
-    /* The gripping arm reaches for the ledge rather than holding an authored
-       direction, because a ledge is wherever it is: the pose gets the hand
-       close and this puts it on the lip. In the model's own space, which is
-       what the renderer converts the world point into. */
-    float hang_grip[3];
-    int hang_grip_valid;
-    short hang_upper_l, hang_lower_l;   /* the two bones the reach solves for */
-    float hang_upper_length, hang_lower_length;
+    /* ---- the reaching arm ----
+       A pose may say that one arm reaches a point in the world rather than
+       holding an authored direction, because the thing it is reaching for is
+       wherever it is: the pose gets the hand close and the solve puts it on the
+       target. The hang's ledge today; a grapple's anchor on the same two fields
+       when that pose is authored, which is why the payload's own field stopped
+       being called a grip.
+
+       In the model's own space, which is what the renderer converts the world
+       point into. */
+    float reach_target[3];
+    int reach_valid;
+    short reach_upper, reach_lower;     /* the two bones the reach solves for */
+    float reach_upper_length, reach_lower_length;
+
+    /* ---- the hit reaction ----
+       How hard the body is rocked and which way, in the body's OWN frame -
+       the payload carries it in world space and this is it resolved against
+       where the body is actually drawn, which the facing above is the only
+       thing that knows.
+
+       It is an additive bend distributed down the spine, applied after the aim
+       layer rather than as a mask beside it. The aim layer is rooted at
+       spine_02 and REPLACES everything above it, so a reaction sharing that
+       mask would fight it and the rifle would come off the crosshair every time
+       a round landed. Bending the chain instead leaves every local rotation the
+       aim layer wrote exactly where it put it, and the hierarchy carries the
+       chest, both arms, the head and the gun along with it - which is right, a
+       round should disturb an aim.
+
+       The pelvis is deliberately not in it. The legs hang off the pelvis, and
+       leaving it alone is the whole reason a sprinting player keeps sprinting
+       through a hit. */
+    float flinch;
+    float flinch_forward;   /* into the body's chest, positive from the front */
+    float flinch_left;      /* across it, positive arriving on its left */
+    int flinch_region;
 
     /* ---- facing ----
        Which way the body stands, and where its legs point inside that.
@@ -223,11 +277,11 @@ void character_animation_play_oneshot(CharacterAnimation* animation,
 void character_animation_update(CharacterAnimation* animation, const SkinnedModel* model,
                                 const CharacterVisualState* state, float delta_time);
 
-/* Where on the ledge the hanging hand should land, in the model's own space.
-   Set before the update each frame; `valid` zero leaves the arm on its
-   authored direction, which is what a body that is not hanging wants. */
-void character_animation_set_grip(CharacterAnimation* animation,
-                                  float x, float y, float z, int valid);
+/* Where the reaching arm's hand should land, in the model's own space. Set
+   before the update each frame; `valid` zero leaves the arm on its authored
+   direction, which is what a body reaching for nothing wants. */
+void character_animation_set_reach(CharacterAnimation* animation,
+                                   float x, float y, float z, int valid);
 
 /* The yaw the body should be drawn at, in the same degrees the state's own
    heading is in. Travelling heading where a clip owns the body, look heading

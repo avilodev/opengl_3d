@@ -75,11 +75,22 @@ typedef struct {
     /* Seconds left of being down, counting to zero. Meaningless while alive. */
     float respawn_timer;
 
-    /* The rock a round put through it, signed, decaying to zero. Driven onto
-       the rig's lean channel - the spine bends and the feet stay planted, which
-       is the shape of a flinch and the only hit reaction a rig with no hit clip
-       can give. */
+    /* The rock a round put through it: how hard, decaying to zero, and which
+       way the round was travelling as a unit horizontal direction in world
+       space.
+
+       A direction rather than the signed sideways figure this used to be. That
+       one existed because the only channel a rig with no hit clip had was the
+       lean, which bends about one axis - so a round taken in the chest and a
+       round taken in the back produced identical pictures, and both of them
+       fought the peek lean of any body that could also peek. The rig's reaction
+       layer rotates this into the body's own frame and bends the spine away
+       from it, which covers every angle a round can arrive from. */
     float flinch;
+    float flinch_x, flinch_z;
+    /* Which band it landed in, as a CombatantRegion. Picks the head snap apart
+       from the body rock. */
+    int flinch_region;
 
     int active;
 } Combatant;
