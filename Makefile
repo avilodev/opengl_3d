@@ -94,6 +94,9 @@ HEADLESS_CORE := \
     src/render/arm_geometry.c \
     src/render/arm_placement.c \
     src/render/character_animation.c \
+    src/render/character_authored_pose.c \
+    src/render/character_facing.c \
+    src/render/character_layers.c \
     src/render/character_transform.c \
     src/render/glb.c \
     src/render/skinned_model_glb.c \
